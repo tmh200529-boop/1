@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>传奇世界</title>
+<style>
+  :root { --gold: #f2c14e; --bg: #14110d; --panel: rgba(28,22,16,.96); --line: #6b5230; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; color: #eadfc8; }
+  body { display: flex; align-items: center; justify-content: center; }
+  #wrap { position: relative; width: 100vw; max-width: calc(100vh * 16 / 9); aspect-ratio: 16 / 9; background: #111; overflow: hidden; }
+  canvas { width: 100%; height: 100%; display: block; }
+  .abs { position: absolute; }
+  /* 技能栏 */
+  #bar { position: absolute; left: 50%; bottom: 1.6%; transform: translateX(-50%); display: flex; gap: .8vmin; }
+  .sk { position: relative; width: 9vmin; height: 9vmin; max-width: 62px; max-height: 62px; border-radius: 12px; border: 2px solid var(--line); background: rgba(24,18,12,.88); color: #fff; font-size: 3.6vmin; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; padding: 0; }
+  .sk small { font-size: 1.5vmin; opacity: .8; line-height: 1; margin-top: 2px; }
+  .sk .k { position: absolute; left: 3px; top: 1px; font-size: 1.5vmin; opacity: .7; }
+  .sk .cd { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.65); height: 0; }
+  .sk .n { position: absolute; right: 3px; bottom: 1px; font-size: 1.7vmin; color: var(--gold); font-weight: 700; }
+  .sk:active { transform: scale(.93); }
+  #topbtns { position: absolute; right: 1.2%; top: 18%; display: flex; flex-direction: column; gap: 6px; }
+  .tb { width: 7.2vmin; height: 7.2vmin; max-width: 46px; max-height: 46px; border-radius: 50%; border: 2px solid var(--line); background: rgba(24,18,12,.88); color: #fff; font-size: 3.4vmin; cursor: pointer; padding: 0; }
+  .tb.off { opacity: .45; }
+  /* 面板 */
+  .overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.55); z-index: 20; padding: 8px; }
+  .overlay.show { display: flex; }
+  .card { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 14px; width: min(560px, 100%); max-height: 94%; overflow: auto; box-shadow: 0 0 30px rgba(0,0,0,.8); }
+  .card h2 { margin: 0 0 8px; color: var(--gold); text-align: center; letter-spacing: 3px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+  .tab { flex: 1; padding: 7px; border: 1px solid var(--line); background: #2a2016; color: #cdbb97; border-radius: 8px; text-align: center; cursor: pointer; font-size: 14px; }
+  .tab.on { background: #5a4220; color: #fff; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid #3a2c1a; border-radius: 8px; margin-bottom: 5px; background: #20180f; font-size: 13px; }
+  .row .nm { flex: 1; line-height: 1.35; }
+  .row .nm i { font-style: normal; opacity: .7; font-size: 12px; display: block; }
+  .btn { border: 1px solid #8c6a30; background: linear-gradient(#7a5a28, #4d3818); color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+  .btn:active { transform: scale(.95); }
+  .btn.red { background: linear-gradient(#a83a2a, #6a2218); border-color: #c05a4a; }
+  .btn.dis { opacity: .4; pointer-events: none; }
+  .slot-title { color: #9d8b6a; font-size: 12px; margin: 6px 0 3px; }
+  .classes { display: flex; gap: 8px; margin: 10px 0; }
+  .cls { flex: 1; border: 2px solid #4a3820; border-radius: 12px; padding: 8px 4px; text-align: center; cursor: pointer; background: #20180f; font-size: 12px; line-height: 1.5; }
+  .cls.on { border-color: var(--gold); background: #3a2a14; }
+  .cls .ic { font-size: 34px; display: block; }
+  input#nm { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: #1b140c; color: #fff; text-align: center; font-size: 15px; margin-bottom: 10px; }
+  .center { text-align: center; }
+  .small { font-size: 12px; opacity: .65; margin-top: 8px; }
+  #toast { position: absolute; left: 50%; top: 20%; transform: translateX(-50%); background: rgba(0,0,0,.75); border: 1px solid var(--gold); padding: 6px 16px; border-radius: 20px; color: var(--gold); font-size: 14px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 30; white-space: nowrap; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="960" height="540"></canvas>
+
+  <div id="topbtns">
+    <button class="tb" id="bBag" title="背包">🎒</button>
+    <button class="tb" id="bMusic" title="音乐">🎵</button>
+  </div>
+  <div id="bar"></div>
+  <div id="toast"></div>
+
+  <div class="overlay show" id="startOv">
+    <div class="card center">
+      <h2>⚔️ 传奇世界 ⚔️</h2>
+      <div style="font-size:13px;opacity:.8">选择你的职业，闯荡玛法大陆</div>
+      <div class="classes" id="classes"></div>
+      <input id="nm" maxlength="8" placeholder="角色名（可不填）">
+      <button class="btn" id="bStart" style="padding:10px 30px;font-size:16px">开始冒险</button>
+      <button class="btn" id="bCont" style="padding:10px 18px;font-size:14px;display:none;margin-left:6px">继续存档</button>
+      <div class="small">点击地面移动 · 点击怪物攻击 · 1/2/3 释放技能 · Q 红药 · E 蓝药 · B 背包<br>作者：Howard Tang</div>
+    </div>
+  </div>
+
+  <div class="overlay" id="panelOv">
+    <div class="card">
+      <div class="tabs"><div class="tab on" data-t="bag">背包</div><div class="tab" data-t="shop">商店</div><div class="tab" id="tClose" style="flex:.4">✕</div></div>
+      <div id="panel"></div>
+    </div>
+  </div>
+
+  <div class="overlay" id="deadOv">
+    <div class="card center">
+      <h2 style="color:#e0584a">你死了…</h2>
+      <p style="font-size:14px">损失了一部分金币，别灰心，装备和等级都还在。</p>
+      <button class="btn red" id="bRevive" style="padding:10px 28px;font-size:16px">回城复活</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const VW = 960, VH = 540, WW = 3200, WH = 2200;
+const TOWN = { x: 380, y: 380, r: 300 };
+const $ = id => document.getElementById(id);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+// ---------- 数据 ----------
+const GRADES = [['普通', '#e6e6e6'], ['精良', '#5fd96a'], ['稀有', '#4aa8ff'], ['史诗', '#c26bff'], ['传奇', '#ff9b2f']];
+const GM = [1, 1.25, 1.55, 1.9, 2.5];
+const SLOTS = { weapon: '武器', armor: '衣服', helmet: '头盔', ring: '戒指' };
+const NAMES = {
+  weapon: ['木剑', '青铜剑', '铁剑', '精钢剑', '乌金剑', '凌云剑'],
+  armor: ['布衣', '皮甲', '铁甲', '锁子甲', '魔法长袍', '天魔神甲'],
+  helmet: ['布帽', '皮盔', '铁盔', '青铜盔', '黄金头盔', '战神头盔'],
+  ring: ['铁戒指', '银戒指', '黑檀戒指', '珊瑚戒指', '龙之戒指', '幻影戒指'],
+};
+const CLASSES = {
+  warrior: { name: '战士', ic: '⚔️', color: '#c0452f', hp: [70, 24], mp: [25, 4], atk: [4, 1.9], def: 1.3, range: 62, cd: 0.75, ranged: false,
+    desc: '血厚防高<br>近战爆发', skills: [
+      { n: '烈火剑法', ic: '🔥', mp: 10, cd: 1.6 }, { n: '半月弯刀', ic: '🌙', mp: 14, cd: 3 }, { n: '狮子吼', ic: '🦁', mp: 20, cd: 10 }] },
+  mage: { name: '法师', ic: '🔮', color: '#3b7dd8', hp: [45, 13], mp: [50, 15], atk: [3, 2.2], def: 0.7, range: 270, cd: 0.9, ranged: true, proj: '🔥',
+    desc: '远程魔法<br>群体输出', skills: [
+      { n: '雷电术', ic: '⚡', mp: 12, cd: 1.5 }, { n: '冰咆哮', ic: '❄️', mp: 24, cd: 4 }, { n: '魔法盾', ic: '🛡️', mp: 20, cd: 12 }] },
+  taoist: { name: '道士', ic: '☯️', color: '#3aa05a', hp: [55, 17], mp: [40, 10], atk: [3, 2.0], def: 1.0, range: 250, cd: 0.9, ranged: true, proj: '📜',
+    desc: '施毒治愈<br>攻守兼备', skills: [
+      { n: '施毒术', ic: '☠️', mp: 8, cd: 2 }, { n: '治愈术', ic: '💚', mp: 14, cd: 3 }, { n: '灵魂火符', ic: '🌠', mp: 18, cd: 5 }] },
+};
+// [名称, emoji, 等级, 血量, 攻击, 防御, 经验, 金币, 速度, 主动攻击, 尺寸]
+const MT = [
+  ['鸡', '🐔', 1, 18, 2, 0, 5, 2, 70, false, 26],
+  ['鹿', '🦌', 2, 32, 4, 0, 8, 3, 85, false, 32],
+  ['稻草人', '🎃', 3, 62, 6, 1, 13, 5, 70, true, 34],
+  ['半兽人', '👹', 5, 115, 10, 2, 22, 9, 80, true, 38],
+  ['骷髅', '💀', 8, 210, 17, 4, 40, 15, 90, true, 38],
+  ['僵尸', '🧟', 11, 380, 26, 6, 68, 24, 75, true, 42],
+  ['沃玛卫士', '👺', 14, 640, 38, 9, 115, 38, 95, true, 46],
+];
+const BOSS = ['赤月恶魔', '👿', 18, 4200, 72, 14, 1600, 600, 105, true, 78];
+const ZONES = [[700, [0, 1]], [1100, [1, 2, 3]], [1600, [3, 4]], [2100, [4, 5]], [9999, [5, 6]]];
+
+// ---------- 存档 ----------
+let G = null;   // 角色数据
+function save() { try { localStorage.setItem('legend-v1', JSON.stringify(G)); } catch (e) {} }
+function loadSave() { try { return JSON.parse(localStorage.getItem('legend-v1')); } catch (e) { return null; } }
+
+// ---------- 装备 ----------
+let itemId = 1;
+function mkItem(slot, ilvl, grade) {
+  const m = GM[grade], idx = Math.min(5, Math.floor((ilvl - 1) / 3));
+  const it = { id: Date.now() + '' + itemId++, slot, ilvl, grade, atk: 0, def: 0, hp: 0, mp: 0 };
+  const prefix = ['', '', '', '史诗·', '传奇·'][grade];
+  it.name = prefix + NAMES[slot][idx];
+  const j = () => rnd(0.9, 1.15);
+  if (slot === 'weapon') it.atk = Math.round((1 + ilvl * 1.7) * m * j());
+  if (slot === 'armor') it.def = Math.round((0.6 + ilvl * 0.85) * m * j());
+  if (slot === 'helmet') { it.def = Math.round((0.3 + ilvl * 0.45) * m * j()); it.hp = Math.round(ilvl * 5 * m * j()); }
+  if (slot === 'ring') { it.atk = Math.round((0.4 + ilvl * 0.6) * m * j()); it.mp = Math.round(ilvl * 3.5 * m * j()); }
+  return it;
+}
+function rollGrade(ilvl, boss) {
+  const r = Math.min(0.9999, Math.random() + ilvl * 0.008 + (boss ? 0.35 : 0));
+  return r < 0.6 ? 0 : r < 0.86 ? 1 : r < 0.96 ? 2 : r < 0.993 ? 3 : 4;
+}
+const score = it => it ? it.atk * 2 + it.def * 2 + it.hp * 0.25 + it.mp * 0.3 : 0;
+const price = it => Math.round((6 + it.ilvl * 5) * GM[it.grade]);
+const statText = it => [it.atk && `攻击+${it.atk}`, it.def && `防御+${it.def}`, it.hp && `生命+${it.hp}`, it.mp && `魔法+${it.mp}`].filter(Boolean).join('  ');
+
+// ---------- 角色属性 ----------
+function gear(k) { let v = 0; for (const s in G.equip) if (G.equip[s]) v += G.equip[s][k] || 0; return v; }
+function stats() {
+  const c = CLASSES[G.cls], L = G.lvl;
+  const a = c.atk[0] + L * c.atk[1] + gear('atk');
+  return {
+    atk: a, min: a * 0.8, max: a * 1.2,
+    def: 1 + L * 0.5 * c.def + gear('def'),
+    maxHp: Math.round(c.hp[0] + c.hp[1] * L + gear('hp')),
+    maxMp: Math.round(c.mp[0] + c.mp[1] * L + gear('mp')),
+  };
+}
+const expNeed = L => Math.round(20 * Math.pow(L, 1.9));
+const MAXLV = 30;
+
+// ---------- 世界状态 ----------
+const P = { x: TOWN.x, y: TOWN.y + 60, dir: 1, moveTo: null, target: null, atkT: 0, cds: [0, 0, 0], shield: 0, shieldT: 0, hp: 1, mp: 1, dead: false, anim: 0, swing: 0 };
+let monsters = [], drops = [], projs = [], fx = [], floats = [], logs = [];
+let cam = { x: 0, y: 0 }, tNow = 0, started = false;
+const inTown = o => Math.hypot(o.x - TOWN.x, o.y - TOWN.y) < TOWN.r;
+
+function spawnMonster(def, x, y, boss) {
+  const m = { def, x, y, sx: x, sy: y, hp: def[3], maxhp: def[3], atkT: rnd(0, 1), stun: 0, poison: null, dead: false, respawn: 0, dir: 1, wander: rnd(0, 3), wx: x, wy: y, boss: !!boss, aggro: false, anim: rnd(0, 6) };
+  monsters.push(m); return m;
+}
+function buildWorld() {
+  monsters = []; drops = []; projs = []; fx = []; floats = [];
+  let tries = 0;
+  while (monsters.length < 72 && tries++ < 3000) {
+    const x = rnd(120, WW - 120), y = rnd(120, WH - 120);
+    const d = Math.hypot(x - TOWN.x, y - TOWN.y);
+    if (d < TOWN.r + 60) continue;
+    if (Math.hypot(x - 2850, y - 1950) < 260) continue;
+    if (monsters.some(m => Math.hypot(m.x - x, m.y - y) < 90)) continue;
+    const z = ZONES.find(z => d < z[0])[1];
+    spawnMonster(MT[z[Math.floor(Math.random() * z.length)]], x, y);
+  }
+  spawnMonster(BOSS, 2850, 1950, true);
+}
+
+// ---------- 日志 / 提示 ----------
+function log(text, color = '#eadfc8') { logs.push({ text, color, t: tNow }); if (logs.length > 7) logs.shift(); }
+let toastT;
+function toast(t) { const e = $('toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => e.classList.remove('show'), 1600); }
+function floatText(x, y, text, color = '#fff', size = 16) { floats.push({ x, y, text, color, size, t: 0 }); }
+
+// ---------- 音乐 ----------
+const bgm = new Audio('music/bgm.mp3'); bgm.loop = true; bgm.volume = 0.25;
+let musicOn = true;
+function playMusic() { if (musicOn) { const r = bgm.play(); if (r && r.catch) r.catch(() => {}); } else bgm.pause(); }
+$('bMusic').onclick = () => { musicOn = !musicOn; $('bMusic').classList.toggle('off', !musicOn); playMusic(); };
+document.addEventListener('visibilitychange', () => { if (document.hidden) bgm.pause(); else if (started) playMusic(); });
+let ac = null;
+function beep(f, d = 0.08, type = 'square', v = 0.04) {
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    const o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.value = f;
+    g.gain.setValueAtTime(v, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + d);
+    o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + d);
+  } catch (e) {}
+}
+
+// ---------- 战斗 ----------
+function roll(mult = 1) {
+  const s = stats(); let d = rnd(s.min, s.max) * mult, crit = Math.random() < 0.08;
+  if (crit) d *= 1.6; return [Math.round(d), crit];
+}
+function hurtMonster(m, raw, color = '#fff', crit = false) {
+  if (m.dead) return;
+  const d = Math.max(1, Math.round(raw - m.def[5] * 0.5));
+  m.hp -= d; m.aggro = true;
+  floatText(m.x, m.y - m.def[10], (crit ? '暴击 ' : '') + d, crit ? '#ffd84a' : color, crit ? 22 : 16);
+  fx.push({ type: 'spark', x: m.x, y: m.y - 10, t: 0 });
+  beep(crit ? 520 : 300, 0.05);
+  if (m.hp <= 0) killMonster(m);
+}
+function killMonster(m) {
+  m.dead = true; m.respawn = m.boss ? 90 : 14; if (P.target === m) P.target = null;
+  const d = m.def, L = d[2];
+  gainExp(d[6]);
+  const gold = Math.round(d[7] * rnd(0.6, 1.5));
+  drops.push({ x: m.x + rnd(-14, 14), y: m.y + rnd(-14, 14), gold, t: 0 });
+  const n = m.boss ? 3 : (Math.random() < 0.2 + L * 0.004 ? 1 : 0);
+  for (let i = 0; i < n; i++) {
+    const slot = ['weapon', 'armor', 'helmet', 'ring'][Math.floor(Math.random() * 4)];
+    const it = mkItem(slot, L, rollGrade(L, m.boss));
+    drops.push({ x: m.x + rnd(-26, 26), y: m.y + rnd(-26, 26), item: it, t: 0 });
+    if (it.grade >= 3) log(`✨ 掉落 ${GRADES[it.grade][0]}装备：${it.name}`, GRADES[it.grade][1]);
+  }
+  log(`击杀 ${d[0]}  经验 +${d[6]}`, '#b9a98a');
+  fx.push({ type: 'poof', x: m.x, y: m.y, t: 0 });
+}
+function gainExp(n) {
+  if (G.lvl >= MAXLV) return;
+  G.exp += n;
+  while (G.lvl < MAXLV && G.exp >= expNeed(G.lvl)) {
+    G.exp -= expNeed(G.lvl); G.lvl++;
+    const s = stats(); P.hp = s.maxHp; P.mp = s.maxMp;
+    fx.push({ type: 'ring', x: P.x, y: P.y, r: 0, max: 120, t: 0, color: '#ffd84a' });
+    floatText(P.x, P.y - 60, `升级！Lv.${G.lvl}`, '#ffd84a', 26); log(`🎉 恭喜升到 ${G.lvl} 级！`, '#ffd84a');
+    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.18, 'triangle', 0.06), i * 110));
+    save();
+  }
+  if (G.lvl >= MAXLV) G.exp = 0;
+}
+function hurtPlayer(raw, from) {
+  if (P.dead) return;
+  const s = stats();
+  let d = Math.max(1, Math.round(raw * rnd(0.85, 1.15) - s.def * 0.5));
+  if (P.shield > 0) { const ab = Math.min(P.shield, d); P.shield -= ab; d -= ab; floatText(P.x, P.y - 50, '盾 ' + ab, '#7fc4ff'); }
+  if (d > 0) { P.hp -= d; floatText(P.x, P.y - 50, '-' + d, '#ff6b5a', 18); beep(160, 0.08, 'sawtooth', 0.05); }
+  if (P.hp <= 0) { P.hp = 0; P.dead = true; P.target = null; P.moveTo = null; G.gold = Math.floor(G.gold * 0.9); $('deadOv').classList.add('show'); save(); }
+}
+function nearestMonster(r) {
+  let best = null, bd = r;
+  for (const m of monsters) { if (m.dead) continue; const d = dist(P, m); if (d < bd) { bd = d; best = m; } }
+  return best;
+}
+function shoot(m, mult, emoji, extra) {
+  const [d, c] = roll(mult);
+  projs.push({ x: P.x, y: P.y - 20, t: m, dmg: d, crit: c, emoji, spd: 520, ...extra });
+}
+function castSkill(i) {
+  if (P.dead || !started) return;
+  const c = CLASSES[G.cls], sk = c.skills[i], s = stats();
+  if (P.cds[i] > 0) return;
+  if (P.mp < sk.mp) { toast('魔法值不足'); return; }
+  let tg = P.target && !P.target.dead ? P.target : null;
+  const needTarget = !(G.cls === 'warrior' && i >= 1) && !(G.cls === 'mage' && i === 2) && !(G.cls === 'taoist' && i === 1);
+  const reach = c.ranged ? c.range + 30 : c.range + 20;
+  if (needTarget) {
+    if (!tg) tg = nearestMonster(reach + 20);
+    if (!tg) { toast('附近没有目标'); return; }
+    if (dist(P, tg) > reach + tg.def[10] * 0.4) { toast('目标太远'); P.target = tg; return; }
+    P.target = tg; P.dir = tg.x >= P.x ? 1 : -1;
+  }
+  const done = () => { P.mp -= sk.mp; P.cds[i] = sk.cd; P.swing = 0.25; };
+  if (G.cls === 'warrior') {
+    if (i === 0) { const [d, cr] = roll(2.6); hurtMonster(tg, d, '#ff9b4a', cr); fx.push({ type: 'slash', x: tg.x, y: tg.y - 14, t: 0, color: '#ff7a2a' }); done(); }
+    if (i === 1) {
+      fx.push({ type: 'arc', x: P.x, y: P.y - 14, t: 0, r: 105 });
+      monsters.forEach(m => { if (!m.dead && dist(P, m) < 105 + m.def[10] * 0.4) { const [d, cr] = roll(1.6); hurtMonster(m, d, '#ffcf5a', cr); } }); done();
+    }
+    if (i === 2) {
+      fx.push({ type: 'ring', x: P.x, y: P.y, r: 0, max: 190, t: 0, color: '#ffe08a' });
+      monsters.forEach(m => { if (!m.dead && dist(P, m) < 190) m.stun = 2.2; }); floatText(P.x, P.y - 60, '狮子吼！', '#ffe08a', 20); done();
+    }
+  } else if (G.cls === 'mage') {
+    if (i === 0) { const [d, cr] = roll(2.8); fx.push({ type: 'bolt', x1: P.x, y1: P.y - 30, x2: tg.x, y2: tg.y - 14, t: 0 }); hurtMonster(tg, d, '#a9d6ff', cr); done(); }
+    if (i === 1) {
+      const cx = tg ? tg.x : P.x, cy = tg ? tg.y : P.y; if (!tg) { tg = nearestMonster(reach); }
+      const ox = tg ? tg.x : P.x, oy = tg ? tg.y : P.y;
+      fx.push({ type: 'ring', x: ox, y: oy, r: 0, max: 130, t: 0, color: '#9fe3ff' });
+      monsters.forEach(m => { if (!m.dead && Math.hypot(m.x - ox, m.y - oy) < 130) { const [d, cr] = roll(2.0); hurtMonster(m, d, '#9fe3ff', cr); m.stun = Math.max(m.stun, 1.2); } });
+      done();
+    }
+    if (i === 2) { P.shield = 30 + G.lvl * 9; P.shieldT = 12; floatText(P.x, P.y - 60, '魔法盾', '#7fc4ff', 20); done(); }
+  } else {
+    if (i === 0) { tg.poison = { t: 6, tick: 1, dmg: Math.round(s.atk * 0.55 + 2) }; floatText(tg.x, tg.y - 40, '中毒', '#7fe07f'); done(); }
+    if (i === 1) { const h = Math.round(s.maxHp * 0.3 + s.atk * 2); P.hp = Math.min(s.maxHp, P.hp + h); floatText(P.x, P.y - 60, '+' + h, '#7fe07f', 20); fx.push({ type: 'ring', x: P.x, y: P.y, r: 0, max: 70, t: 0, color: '#7fe07f' }); done(); }
+    if (i === 2) { shoot(tg, 2.4, '🌠', { spd: 600, aoe: 110 }); done(); }
+  }
+  beep(440 + i * 120, 0.12, 'triangle', 0.05);
+}
+function basicAttack() {
+  const c = CLASSES[G.cls], m = P.target;
+  P.atkT = c.cd; P.swing = 0.22; P.dir = m.x >= P.x ? 1 : -1;
+  if (c.ranged) shoot(m, 1, c.proj, {});
+  else { const [d, cr] = roll(1); hurtMonster(m, d, '#fff', cr); fx.push({ type: 'slash', x: m.x, y: m.y - 14, t: 0, color: '#fff' }); }
+}
+function usePotion(kind) {
+  if (P.dead || !started) return;
+  const s = stats(), key = kind === 'hp' ? 'hpPot' : 'mpPot';
+  if (G[key] <= 0) { toast('没有药水了，回城购买'); return; }
+  if (kind === 'hp' && P.hp >= s.maxHp) return; if (kind === 'mp' && P.mp >= s.maxMp) return;
+  G[key]--;
+  if (kind === 'hp') { const h = 60 + G.lvl * 14; P.hp = Math.min(s.maxHp, P.hp + h); floatText(P.x, P.y - 55, '+' + h, '#ff7a7a', 18); }
+  else { const h = 40 + G.lvl * 9; P.mp = Math.min(s.maxMp, P.mp + h); floatText(P.x, P.y - 55, '+' + h, '#7ab4ff', 18); }
+  beep(700, 0.1, 'sine', 0.06); updateBar();
+}
+
+// ---------- 更新 ----------
+function update(dt) {
+  tNow += dt;
+  if (!started || !G) return;
+  const s = stats(), c = CLASSES[G.cls];
+  P.anim += dt;
+  if (!P.dead) {
+    // 回复
+    const town = inTown(P);
+    P.hp = Math.min(s.maxHp, P.hp + s.maxHp * (town ? 0.08 : 0.004) * dt);
+    P.mp = Math.min(s.maxMp, P.mp + s.maxMp * (town ? 0.08 : 0.012) * dt);
+    P.atkT -= dt; P.swing -= dt; for (let i = 0; i < 3; i++) P.cds[i] -= dt;
+    if (P.shieldT > 0) { P.shieldT -= dt; if (P.shieldT <= 0) P.shield = 0; }
+    // 目标 / 移动
+    const spd = 210;
+    let goal = null, stopDist = 4;
+    if (P.target && P.target.dead) P.target = null;
+    if (P.target) {
+      const m = P.target, reach = (c.ranged ? c.range : c.range) + m.def[10] * 0.3;
+      if (inTown(m) && false) P.target = null;
+      const d = dist(P, m);
+      if (d > reach - 6) { goal = m; stopDist = reach - 10; } else { P.dir = m.x >= P.x ? 1 : -1; if (P.atkT <= 0) basicAttack(); }
+    } else if (P.moveTo) { goal = P.moveTo; }
+    if (goal) {
+      const dx = goal.x - P.x, dy = goal.y - P.y, d = Math.hypot(dx, dy);
+      if (d > stopDist) { const st = Math.min(d - stopDist, spd * dt); P.x += dx / d * st; P.y += dy / d * st; if (Math.abs(dx) > 2) P.dir = dx > 0 ? 1 : -1; }
+      else if (P.moveTo && !P.target) P.moveTo = null;
+    }
+    P.x = Math.max(20, Math.min(WW - 20, P.x)); P.y = Math.max(20, Math.min(WH - 20, P.y));
+    // 拾取
+    for (let i = drops.length - 1; i >= 0; i--) {
+      const dr = drops[i]; dr.t += dt;
+      if (Math.hypot(dr.x - P.x, dr.y - P.y) < 42) {
+        if (dr.gold) { G.gold += dr.gold; floatText(dr.x, dr.y - 20, '+' + dr.gold + '金', '#ffd84a', 14); beep(900, 0.06, 'sine', 0.05); drops.splice(i, 1); }
+        else if (G.bag.length < 28) { G.bag.push(dr.item); log('拾取 ' + dr.item.name, GRADES[dr.item.grade][1]); beep(660, 0.08, 'sine', 0.05); drops.splice(i, 1); if (!$('panelOv').classList.contains('show')) {} }
+        else if (!dr._warned) { dr._warned = true; toast('背包满了！'); }
+      } else if (dr.t > 180) drops.splice(i, 1);
+    }
+  }
+  // 怪物
+  for (const m of monsters) {
+    m.anim += dt;
+    if (m.dead) { m.respawn -= dt; if (m.respawn <= 0) { m.dead = false; m.hp = m.maxhp; m.x = m.sx; m.y = m.sy; m.aggro = false; m.poison = null; m.stun = 0; } continue; }
+    if (m.poison) { m.poison.t -= dt; m.poison.tick -= dt; if (m.poison.tick <= 0) { m.poison.tick = 1; hurtMonster(m, m.poison.dmg + m.def[5] * 0.5, '#7fe07f'); } if (m.poison && m.poison.t <= 0) m.poison = null; if (m.dead) continue; }
+    if (m.stun > 0) { m.stun -= dt; continue; }
+    const d = dist(m, P), homeD = Math.hypot(m.x - m.sx, m.y - m.sy);
+    const chase = !P.dead && !inTown(P) && (m.aggro || (m.def[9] && d < 190)) && homeD < 520 && d < 700;
+    if (!chase) m.aggro = false;
+    const sp = m.def[8];
+    if (chase) {
+      const reach = m.def[10] * 0.5 + 18;
+      if (d > reach) { m.x += (P.x - m.x) / d * sp * dt; m.y += (P.y - m.y) / d * sp * dt; m.dir = P.x >= m.x ? 1 : -1; }
+      else { m.atkT -= dt; if (m.atkT <= 0) { m.atkT = m.boss ? 1.0 : 1.35; hurtPlayer(m.def[4], m); fx.push({ type: 'spark', x: P.x, y: P.y - 14, t: 0 }); } }
+    } else {
+      if (homeD > 12 && (m.aggro === false) && m.returning) { m.x += (m.sx - m.x) / homeD * sp * dt; m.y += (m.sy - m.y) / homeD * sp * dt; if (homeD < 14) m.returning = false; }
+      else {
+        m.wander -= dt;
+        if (m.wander <= 0) { m.wander = rnd(2, 5); const a = rnd(0, 6.28), r = rnd(0, 70); m.wx = m.sx + Math.cos(a) * r; m.wy = m.sy + Math.sin(a) * r; }
+        const dx = m.wx - m.x, dy = m.wy - m.y, dd = Math.hypot(dx, dy);
+        if (dd > 4) { m.x += dx / dd * sp * 0.35 * dt; m.y += dy / dd * sp * 0.35 * dt; m.dir = dx > 0 ? 1 : -1; }
+      }
+      if (homeD > 530) m.returning = true;
+    }
+    m.atkT = Math.max(m.atkT - 0, -1);
+  }
+  // 飞行物
+  for (let i = projs.length - 1; i >= 0; i--) {
+    const p = projs[i], t = p.t;
+    if (!t || t.dead) { projs.splice(i, 1); continue; }
+    const dx = t.x - p.x, dy = t.y - 14 - p.y, d = Math.hypot(dx, dy);
+    if (d < 20) {
+      if (p.aoe) { fx.push({ type: 'ring', x: t.x, y: t.y, r: 0, max: p.aoe, t: 0, color: '#ffe08a' }); monsters.forEach(m => { if (!m.dead && Math.hypot(m.x - t.x, m.y - t.y) < p.aoe) hurtMonster(m, p.dmg, '#ffe08a', p.crit); }); }
+      else hurtMonster(t, p.dmg, '#fff', p.crit);
+      projs.splice(i, 1);
+    } else { const st = p.spd * dt; p.x += dx / d * st; p.y += dy / d * st; }
+  }
+  for (const f of fx) f.t += dt;
+  fx = fx.filter(f => f.t < 0.6);
+  for (const f of floats) { f.t += dt; f.y -= 28 * dt; }
+  floats = floats.filter(f => f.t < 1);
+  // 相机
+  cam.x += (P.x - VW / 2 - cam.x) * Math.min(1, dt * 8); cam.y += (P.y - VH / 2 - cam.y) * Math.min(1, dt * 8);
+  cam.x = Math.max(0, Math.min(WW - VW, cam.x)); cam.y = Math.max(0, Math.min(WH - VH, cam.y));
+}
+
+// ---------- 绘制 ----------
+const hash = (x, y) => { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >> 13)) * 1274126177; return ((h ^ (h >> 16)) >>> 0) / 4294967295; };
+function drawGround() {
+  const T = 64, x0 = Math.floor(cam.x / T), y0 = Math.floor(cam.y / T);
+  for (let ty = y0; ty <= y0 + VH / T + 1; ty++) for (let tx = x0; tx <= x0 + VW / T + 1; tx++) {
+    const px = tx * T - cam.x, py = ty * T - cam.y, h = hash(tx, ty);
+    const cx = tx * T + 32, cy = ty * T + 32, d = Math.hypot(cx - TOWN.x, cy - TOWN.y);
+    if (d < TOWN.r) ctx.fillStyle = h > 0.5 ? '#8f8a7a' : '#99948346'.slice(0, 7);
+    else {
+      const far = Math.hypot(cx - 2850, cy - 1950) < 420;
+      ctx.fillStyle = far ? (h > 0.5 ? '#5a3a3a' : '#4f3333') : (h > 0.6 ? '#3f6b34' : h > 0.25 ? '#44723a' : '#3a6230');
+    }
+    ctx.fillRect(px, py, T + 1, T + 1);
+    if (d >= TOWN.r && h > 0.93) { ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.fillRect(px + 20, py + 28, 6, 3); }
+  }
+  // 城镇边界
+  ctx.strokeStyle = 'rgba(255,220,140,.45)'; ctx.lineWidth = 3; ctx.setLineDash([14, 10]);
+  ctx.beginPath(); ctx.arc(TOWN.x - cam.x, TOWN.y - cam.y, TOWN.r, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+}
+function emoji(ch, x, y, size, flip) {
+  ctx.save(); ctx.translate(x, y); if (flip) ctx.scale(-1, 1);
+  ctx.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(ch, 0, 0); ctx.restore();
+}
+function label(text, x, y, color = '#fff', size = 12) {
+  ctx.font = `bold ${size}px "Microsoft YaHei",sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(text, x, y); ctx.fillStyle = color; ctx.fillText(text, x, y);
+}
+function bar(x, y, w, h, frac, color) {
+  ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(x, y, w, h); ctx.fillStyle = color; ctx.fillRect(x, y, w * Math.max(0, Math.min(1, frac)), h);
+}
+function drawPlayer() {
+  const c = CLASSES[G.cls], x = P.x - cam.x, y = P.y - cam.y;
+  const moving = !!(P.moveTo || P.target) && !P.dead, bob = moving ? Math.sin(P.anim * 14) * 2 : 0;
+  ctx.save(); ctx.translate(x, y + bob); ctx.scale(P.dir, 1);
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0, 4, 17, 6, 0, 0, 7); ctx.fill();
+  if (P.shield > 0) { ctx.strokeStyle = 'rgba(120,190,255,.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, -22, 30, 0, 7); ctx.stroke(); }
+  ctx.fillStyle = c.color; ctx.fillRect(-9, -28, 18, 24);                       // 身体
+  ctx.fillStyle = '#d9a066'; ctx.beginPath(); ctx.arc(0, -36, 9, 0, 7); ctx.fill();   // 头
+  const hl = G.equip.helmet; ctx.fillStyle = hl ? GRADES[hl.grade][1] : '#3a2a1a'; ctx.fillRect(-9, -46, 18, 7);
+  ctx.fillStyle = '#222'; ctx.fillRect(2, -38, 3, 3);
+  ctx.fillStyle = '#222'; ctx.fillRect(-8, -4, 6, 6 + (moving ? Math.sin(P.anim * 14) * 2 : 0)); ctx.fillRect(2, -4, 6, 6 - (moving ? Math.sin(P.anim * 14) * 2 : 0));
+  const sw = P.swing > 0 ? -1.2 * (P.swing / 0.25) + 0.6 : -0.2;
+  ctx.save(); ctx.translate(10, -22); ctx.rotate(sw);
+  const w = G.equip.weapon, wc = w ? GRADES[w.grade][1] : '#bbb';
+  if (G.cls === 'warrior') { ctx.fillStyle = wc; ctx.fillRect(0, -26, 4, 28); ctx.fillStyle = '#7a5a28'; ctx.fillRect(-3, 0, 10, 4); }
+  else if (G.cls === 'mage') { ctx.fillStyle = '#7a5a28'; ctx.fillRect(0, -28, 3, 34); ctx.fillStyle = wc; ctx.beginPath(); ctx.arc(1.5, -30, 6, 0, 7); ctx.fill(); }
+  else { ctx.fillStyle = '#f0e6c8'; ctx.fillRect(0, -20, 12, 18); ctx.fillStyle = '#c33'; ctx.fillRect(2, -16, 8, 3); ctx.fillRect(2, -10, 8, 3); }
+  ctx.restore(); ctx.restore();
+  label(G.name, x, y - 56, '#ffe9a8', 12);
+}
+function drawFx() {
+  for (const f of fx) {
+    const k = f.t / 0.6, sx = (f.x || 0) - cam.x, sy = (f.y || 0) - cam.y;
+    ctx.globalAlpha = 1 - k;
+    if (f.type === 'spark') { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; for (let i = 0; i < 6; i++) { const a = i * 1.05, r1 = 4 + k * 8, r2 = 8 + k * 16; ctx.beginPath(); ctx.moveTo(sx + Math.cos(a) * r1, sy + Math.sin(a) * r1); ctx.lineTo(sx + Math.cos(a) * r2, sy + Math.sin(a) * r2); ctx.stroke(); } }
+    if (f.type === 'ring') { ctx.strokeStyle = f.color; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(sx, sy, f.max * Math.min(1, k * 1.6), 0, 7); ctx.stroke(); ctx.fillStyle = f.color; ctx.globalAlpha = (1 - k) * 0.18; ctx.fill(); }
+    if (f.type === 'arc') { ctx.strokeStyle = '#ffe9a0'; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(sx, sy, f.r * (0.5 + k * 0.5), -1 + k * 2, 2.2 + k * 2); ctx.stroke(); }
+    if (f.type === 'slash') { ctx.strokeStyle = f.color; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(sx - 22 + k * 10, sy - 22); ctx.lineTo(sx + 22 - k * 10, sy + 22); ctx.stroke(); }
+    if (f.type === 'bolt') { ctx.strokeStyle = '#bfe4ff'; ctx.lineWidth = 3; ctx.beginPath(); const x1 = f.x1 - cam.x, y1 = f.y1 - cam.y, x2 = f.x2 - cam.x, y2 = f.y2 - cam.y; ctx.moveTo(x1, y1); for (let i = 1; i < 7; i++) { const t = i / 7; ctx.lineTo(x1 + (x2 - x1) * t + rnd(-12, 12), y1 + (y2 - y1) * t + rnd(-12, 12)); } ctx.lineTo(x2, y2); ctx.stroke(); }
+    if (f.type === 'poof') { ctx.fillStyle = '#ddd'; for (let i = 0; i < 6; i++) { const a = i * 1.05; ctx.beginPath(); ctx.arc(sx + Math.cos(a) * k * 28, sy + Math.sin(a) * k * 20 - 10, 7 * (1 - k) + 2, 0, 7); ctx.fill(); } }
+    ctx.globalAlpha = 1;
+  }
+}
+function drawWorld() {
+  drawGround();
+  const list = [];
+  // 树（装饰）
+  const cx0 = Math.floor(cam.x / 128) - 1, cy0 = Math.floor(cam.y / 128) - 1;
+  for (let cy = cy0; cy <= cy0 + VH / 128 + 3; cy++) for (let cx = cx0; cx <= cx0 + VW / 128 + 3; cx++) {
+    const h = hash(cx + 500, cy + 900); if (h < 0.72) continue;
+    const x = cx * 128 + hash(cx, cy) * 100, y = cy * 128 + hash(cy, cx) * 100;
+    if (Math.hypot(x - TOWN.x, y - TOWN.y) < TOWN.r + 40 || x > WW || y > WH) continue;
+    if (Math.hypot(x - 2850, y - 1950) < 300) continue;
+    if (monsters.some(m => Math.hypot(m.sx - x, m.sy - y) < 60)) continue;
+    list.push({ y, f: () => emoji('🌲', x - cam.x, y - cam.y - 22, 48) });
+  }
+  // 城镇建筑 / NPC
+  [[260, 250, '🏠'], [520, 250, '🏯'], [250, 520, '⛩️'], [520, 530, '🏠']].forEach(([x, y, e]) => list.push({ y, f: () => emoji(e, x - cam.x, y - cam.y - 30, 70) }));
+  list.push({ y: 340, f: () => { emoji('🧙', 380 - cam.x, 340 - cam.y - 20, 44); label('药店老板', 380 - cam.x, 340 - cam.y - 50, '#8fe08f'); } });
+  list.push({ y: 400, f: () => { emoji('⛲', 380 - cam.x, 440 - cam.y - 20, 50); } });
+  // 掉落
+  for (const d of drops) list.push({ y: d.y, f: () => {
+    const x = d.x - cam.x, y = d.y - cam.y;
+    if (d.gold) emoji('💰', x, y - 6 + Math.sin(d.t * 5) * 2, 22);
+    else { const g = GRADES[d.item.grade][1]; ctx.fillStyle = g; ctx.globalAlpha = 0.35 + 0.25 * Math.sin(d.t * 6); ctx.beginPath(); ctx.arc(x, y - 6, 18, 0, 7); ctx.fill(); ctx.globalAlpha = 1; emoji('📦', x, y - 6, 22); if (d.item.grade >= 2) label(d.item.name, x, y - 24, g, 11); }
+  } });
+  // 怪物
+  for (const m of monsters) if (!m.dead) list.push({ y: m.y, f: () => {
+    const x = m.x - cam.x, y = m.y - cam.y, sz = m.def[10], sel = P.target === m;
+    if (x < -80 || x > VW + 80 || y < -80 || y > VH + 80) return;
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x, y, sz * 0.45, sz * 0.18, 0, 0, 7); ctx.fill();
+    if (sel) { ctx.strokeStyle = '#ff5a4a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y, sz * 0.6, sz * 0.25, 0, 0, 7); ctx.stroke(); }
+    const bob = Math.abs(Math.sin(m.anim * 5)) * 3;
+    emoji(m.def[1], x, y - sz * 0.5 - bob, sz, m.dir < 0);
+    if (m.stun > 0) label('💫', x, y - sz - 6, '#fff', 14);
+    if (m.poison) { ctx.fillStyle = 'rgba(80,220,80,.35)'; ctx.beginPath(); ctx.arc(x, y - sz * 0.5, sz * 0.5, 0, 7); ctx.fill(); }
+    bar(x - sz * 0.5, y - sz - 10, sz, 5, m.hp / m.maxhp, m.boss ? '#c23bd8' : '#d8423a');
+    label(`${m.def[0]} Lv${m.def[2]}`, x, y - sz - 14, m.boss ? '#e9a6ff' : (m.def[2] > G.lvl + 3 ? '#ff8a7a' : '#fff'), 11);
+  } });
+  if (!P.dead) list.push({ y: P.y, f: drawPlayer });
+  list.sort((a, b) => a.y - b.y).forEach(o => o.f());
+  // 飞行物
+  for (const p of projs) emoji(p.emoji, p.x - cam.x, p.y - cam.y, 24);
+  drawFx();
+  for (const f of floats) { ctx.globalAlpha = 1 - f.t; label(f.text, f.x - cam.x, f.y - cam.y, f.color, f.size); ctx.globalAlpha = 1; }
+}
+function drawHUD() {
+  const s = stats();
+  ctx.fillStyle = 'rgba(15,10,6,.72)'; ctx.fillRect(8, 8, 232, 78); ctx.strokeStyle = '#6b5230'; ctx.lineWidth = 2; ctx.strokeRect(8, 8, 232, 78);
+  label(`${G.name}  ${CLASSES[G.cls].name} Lv.${G.lvl}`, 124, 28, '#ffe9a8', 14);
+  bar(16, 36, 216, 14, P.hp / s.maxHp, '#c23a32'); label(`${Math.ceil(P.hp)}/${s.maxHp}`, 124, 48, '#fff', 11);
+  bar(16, 54, 216, 12, P.mp / s.maxMp, '#2f6fcf'); label(`${Math.ceil(P.mp)}/${s.maxMp}`, 124, 65, '#fff', 10);
+  bar(16, 71, 216, 7, G.lvl >= MAXLV ? 1 : G.exp / expNeed(G.lvl), '#d9a23a');
+  label('💰 ' + G.gold, 62, 100, '#ffd84a', 13);
+  // 日志
+  logs.forEach((l, i) => { const age = tNow - l.t; if (age > 8) return; ctx.globalAlpha = Math.min(1, 8 - age); ctx.font = '12px "Microsoft YaHei",sans-serif'; ctx.textAlign = 'left'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.8)'; const y = VH - 90 - (logs.length - 1 - i) * 16; ctx.strokeText(l.text, 12, y); ctx.fillStyle = l.color; ctx.fillText(l.text, 12, y); ctx.globalAlpha = 1; });
+  // 小地图
+  const mw = 150, mh = Math.round(150 * WH / WW), mx = VW - mw - 8, my = 8;
+  ctx.fillStyle = 'rgba(10,20,10,.7)'; ctx.fillRect(mx, my, mw, mh); ctx.strokeStyle = '#6b5230'; ctx.strokeRect(mx, my, mw, mh);
+  const k = mw / WW;
+  ctx.fillStyle = 'rgba(200,190,150,.5)'; ctx.beginPath(); ctx.arc(mx + TOWN.x * k, my + TOWN.y * k, TOWN.r * k, 0, 7); ctx.fill();
+  for (const m of monsters) if (!m.dead) { ctx.fillStyle = m.boss ? '#e04bff' : '#e04a3a'; ctx.fillRect(mx + m.x * k - 1, my + m.y * k - 1, m.boss ? 4 : 2, m.boss ? 4 : 2); }
+  ctx.fillStyle = '#7fff7f'; ctx.fillRect(mx + P.x * k - 2, my + P.y * k - 2, 4, 4);
+  ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.strokeRect(mx + cam.x * k, my + cam.y * k, VW * k, VH * k);
+  if (inTown(P)) label('【安全区】点击药店老板打开商店', VW / 2, 30, '#9fe39f', 14);
+}
+function draw() {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, VW, VH);
+  if (G) { drawWorld(); drawHUD(); }
+}
+
+// ---------- 输入 ----------
+function worldPos(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * VW + cam.x, y: (e.clientY - r.top) / r.height * VH + cam.y };
+}
+let holding = false;
+cv.addEventListener('pointerdown', e => {
+  if (!started || P.dead) return;
+  holding = true; const w = worldPos(e);
+  // NPC
+  if (Math.hypot(w.x - 380, w.y - 320) < 40) { if (dist(P, { x: 380, y: 340 }) < 160) openPanel('shop'); else { toast('走近一点再交谈'); P.moveTo = { x: 380, y: 400 }; P.target = null; } return; }
+  let best = null, bd = 9999;
+  for (const m of monsters) { if (m.dead) continue; const d = Math.hypot(m.x - w.x, m.y - m.def[10] * 0.5 - w.y); if (d < m.def[10] * 0.7 + 12 && d < bd) { bd = d; best = m; } }
+  if (best) { P.target = best; P.moveTo = null; } else { P.target = null; P.moveTo = { x: w.x, y: w.y }; }
+});
+cv.addEventListener('pointermove', e => { if (holding && started && !P.dead && !P.target) { const w = worldPos(e); P.moveTo = { x: w.x, y: w.y }; } });
+addEventListener('pointerup', () => { holding = false; });
+addEventListener('keydown', e => {
+  if (!started) return;
+  if (e.code === 'Digit1') castSkill(0); if (e.code === 'Digit2') castSkill(1); if (e.code === 'Digit3') castSkill(2);
+  if (e.code === 'KeyQ') usePotion('hp'); if (e.code === 'KeyE') usePotion('mp');
+  if (e.code === 'KeyB') { $('panelOv').classList.contains('show') ? closePanel() : openPanel('bag'); }
+  if (e.code === 'Escape') closePanel();
+});
+
+// ---------- 技能栏 / 面板 ----------
+function buildBar() {
+  const c = CLASSES[G.cls]; let h = '';
+  c.skills.forEach((sk, i) => { h += `<button class="sk" data-s="${i}"><span class="k">${i + 1}</span>${sk.ic}<small>${sk.n}</small><div class="cd"></div></button>`; });
+  h += `<button class="sk" data-p="hp"><span class="k">Q</span>🧪<small>红药</small><span class="n" id="nHp"></span></button>`;
+  h += `<button class="sk" data-p="mp"><span class="k">E</span>💧<small>蓝药</small><span class="n" id="nMp"></span></button>`;
+  $('bar').innerHTML = h;
+  $('bar').querySelectorAll('.sk').forEach(b => b.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
+    if (b.dataset.s !== undefined) castSkill(+b.dataset.s); else usePotion(b.dataset.p);
+  }));
+}
+function updateBar() {
+  const c = CLASSES[G.cls];
+  $('bar').querySelectorAll('.sk[data-s]').forEach(b => { const i = +b.dataset.s; b.querySelector('.cd').style.height = Math.max(0, Math.min(1, P.cds[i] / c.skills[i].cd)) * 100 + '%'; });
+  $('nHp').textContent = G.hpPot; $('nMp').textContent = G.mpPot;
+}
+let tab = 'bag';
+function openPanel(t) { tab = t || tab; renderPanel(); $('panelOv').classList.add('show'); }
+function closePanel() { $('panelOv').classList.remove('show'); }
+$('bBag').onclick = () => openPanel('bag');
+$('tClose').onclick = closePanel;
+document.querySelectorAll('.tab[data-t]').forEach(t => t.onclick = () => { tab = t.dataset.t; renderPanel(); });
+function itemRow(it, btns) {
+  const g = GRADES[it.grade], cur = G.equip[it.slot], up = score(it) > score(cur);
+  return `<div class="row"><div class="nm" style="color:${g[1]}">${it.name} <small style="opacity:.7">[${SLOTS[it.slot]} · ${g[0]} · Lv${it.ilvl}]</small>${up && btns ? ' <b style="color:#7fff7f">↑</b>' : ''}<i>${statText(it)}</i></div>${btns}</div>`;
+}
+function renderPanel() {
+  document.querySelectorAll('.tab[data-t]').forEach(t => t.classList.toggle('on', t.dataset.t === tab));
+  const s = stats(); let h = '';
+  if (tab === 'bag') {
+    h += `<div class="slot-title">属性：攻击 ${Math.round(s.min)}-${Math.round(s.max)} · 防御 ${s.def.toFixed(1)} · 生命 ${s.maxHp} · 魔法 ${s.maxMp} · 金币 ${G.gold}</div>`;
+    h += `<div class="slot-title">已装备</div>`;
+    for (const sl in SLOTS) { const it = G.equip[sl]; h += it ? itemRow(it, '') : `<div class="row"><div class="nm" style="opacity:.5">${SLOTS[sl]}：空</div></div>`; }
+    h += `<div class="slot-title">背包 (${G.bag.length}/28) <button class="btn" style="padding:3px 8px;font-size:12px;margin-left:6px" data-a="sellwhite">出售全部普通</button></div>`;
+    if (!G.bag.length) h += `<div class="row" style="opacity:.5">空空如也，去打怪吧</div>`;
+    G.bag.forEach((it, i) => { h += itemRow(it, `<button class="btn" data-a="eq" data-i="${i}">装备</button><button class="btn red" data-a="sell" data-i="${i}">售${price(it)}</button>`); });
+  } else {
+    if (!inTown(P)) h += `<div class="row">只有在城镇安全区才能购买，快回去吧！</div>`;
+    const hpc = 20, mpc = 25;
+    h += `<div class="slot-title">💰 金币 ${G.gold} · 红药 ${G.hpPot} · 蓝药 ${G.mpPot}</div>`;
+    h += `<div class="row"><div class="nm">🧪 金创药<i>立即恢复 ${60 + G.lvl * 14} 点生命 · ${hpc} 金</i></div><button class="btn" data-a="buy" data-k="hp" data-n="1">买1</button><button class="btn" data-a="buy" data-k="hp" data-n="10">买10</button></div>`;
+    h += `<div class="row"><div class="nm">💧 魔法药<i>立即恢复 ${40 + G.lvl * 9} 点魔法 · ${mpc} 金</i></div><button class="btn" data-a="buy" data-k="mp" data-n="1">买1</button><button class="btn" data-a="buy" data-k="mp" data-n="10">买10</button></div>`;
+  }
+  $('panel').innerHTML = h;
+}
+$('panel').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const a = b.dataset.a, i = +b.dataset.i;
+  if (a === 'eq') { const it = G.bag[i]; G.bag.splice(i, 1); const old = G.equip[it.slot]; G.equip[it.slot] = it; if (old) G.bag.push(old); const s = stats(); P.hp = Math.min(P.hp, s.maxHp); P.mp = Math.min(P.mp, s.maxMp); beep(520, 0.1); }
+  if (a === 'sell') { G.gold += price(G.bag[i]); G.bag.splice(i, 1); beep(900, 0.06, 'sine'); }
+  if (a === 'sellwhite') { let g = 0; G.bag = G.bag.filter(it => { if (it.grade === 0) { g += price(it); return false; } return true; }); G.gold += g; toast(g ? `出售获得 ${g} 金币` : '没有普通装备'); }
+  if (a === 'buy') {
+    if (!inTown(P)) { toast('请回到城镇再购买'); return; }
+    const n = +b.dataset.n, k = b.dataset.k, cost = (k === 'hp' ? 20 : 25) * n;
+    if (G.gold < cost) { toast('金币不够'); return; }
+    G.gold -= cost; G[k + 'Pot'] += n; beep(800, 0.08, 'sine');
+  }
+  save(); renderPanel(); updateBar();
+});
+
+// ---------- 开始 / 复活 ----------
+let selCls = 'warrior';
+(function buildStart() {
+  $('classes').innerHTML = Object.entries(CLASSES).map(([k, c]) => `<div class="cls ${k === selCls ? 'on' : ''}" data-c="${k}"><span class="ic">${c.ic}</span><b>${c.name}</b><br>${c.desc}</div>`).join('');
+  $('classes').querySelectorAll('.cls').forEach(el => el.onclick = () => { selCls = el.dataset.c; $('classes').querySelectorAll('.cls').forEach(x => x.classList.toggle('on', x === el)); });
+  if (loadSave()) $('bCont').style.display = '';
+})();
+function beginGame(data) {
+  G = data; buildWorld(); buildBar();
+  const s = stats(); P.x = TOWN.x; P.y = TOWN.y + 60; P.hp = s.maxHp; P.mp = s.maxMp; P.dead = false; P.target = null; P.moveTo = null; P.shield = 0;
+  cam.x = Math.max(0, P.x - VW / 2); cam.y = Math.max(0, P.y - VH / 2);
+  started = true; $('startOv').classList.remove('show'); playMusic(); updateBar();
+  log('欢迎来到传奇世界！点击怪物开始战斗', '#ffe9a8');
+}
+$('bStart').onclick = () => {
+  beginGame({ cls: selCls, name: $('nm').value.trim() || CLASSES[selCls].name, lvl: 1, exp: 0, gold: 50, hpPot: 5, mpPot: 5, bag: [],
+    equip: { weapon: Object.assign(mkItem('weapon', 1, 0), { name: '木剑', atk: 2 }), armor: Object.assign(mkItem('armor', 1, 0), { name: '布衣', def: 1 }), helmet: null, ring: null } });
+  save();
+};
+$('bCont').onclick = () => { const d = loadSave(); if (d) beginGame(d); };
+$('bRevive').onclick = () => {
+  const s = stats(); P.dead = false; P.hp = s.maxHp; P.mp = s.maxMp; P.x = TOWN.x; P.y = TOWN.y + 60; P.target = null; P.moveTo = null;
+  monsters.forEach(m => { m.aggro = false; }); $('deadOv').classList.remove('show'); log('你在城镇复活了', '#9fe39f');
+};
+setInterval(() => { if (started && G) save(); }, 5000);
+
+// ---------- 主循环 ----------
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  update(dt); draw(); if (started && G) updateBar();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+window.__legend = { get G() { return G; }, P, get monsters() { return monsters; }, castSkill, usePotion, stats, killMonster, hurtMonster, gainExp };
+})();
+</script>
+</body>
+</html>

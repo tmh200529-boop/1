@@ -202,16 +202,31 @@ function scheduleMusic() {
     nextT += STEP; stepNo++;
   }
 }
-function startMusic() {
+// 背景音乐：优先播放音乐文件，加载失败时退回代码合成的旋律
+const bgm = new Audio('music/bgm.mp3');
+bgm.loop = true; bgm.volume = 0.3; bgm.preload = 'auto';
+let bgmFailed = false;
+bgm.addEventListener('error', () => { bgmFailed = true; if (S.music) startSynth(); });
+function startSynth() {
   initAudio(); if (!ac) return;
   if (ac.state === 'suspended') ac.resume();
   if (musicTimer) return;
   nextT = ac.currentTime + 0.1; stepNo = 0;
   musicTimer = setInterval(scheduleMusic, 120);
 }
+function startMusic() {
+  initAudio();
+  if (bgmFailed) { startSynth(); return; }
+  const r = bgm.play(); if (r && r.catch) r.catch(() => { bgmFailed = true; startSynth(); });
+}
+function stopMusic() { bgm.pause(); }
+let started = false;
 document.addEventListener('visibilitychange', () => {
   if (!ac) return;
   if (document.hidden) ac.suspend(); else ac.resume();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) bgm.pause(); else if (S.music && started && !bgmFailed) bgm.play().catch(() => {});
 });
 const PENTA = [0, 2, 4, 7, 9];
 function noteForLevel(l) { return 72 + PENTA[l % 5] + 12 * Math.floor(l / 5) - 12; }
@@ -413,6 +428,7 @@ function syncToggles() {
   $('btnMusic').classList.toggle('off', !S.music);
   $('btnSfx').classList.toggle('off', !S.sfx);
   if (musicGain) musicGain.gain.value = S.music ? 1 : 0;
+  if (!S.music) stopMusic();
   if (sfxGain) sfxGain.gain.value = S.sfx ? 1 : 0;
 }
 $('btnMusic').onclick = () => { S.music = !S.music; if (S.music) startMusic(); syncToggles(); save(); toast(S.music ? '🎵 音乐已开' : '🔇 音乐已关'); };
@@ -424,13 +440,13 @@ $('btnClean').onclick = () => {
   selected = -1; render(); save(); toast(`🧹 清理了 ${n} 颗种子`);
 };
 $('btnStart').onclick = () => {
-  $('startCard').classList.remove('show');
+  $('startCard').classList.remove('show'); started = true;
   initAudio(); syncToggles(); if (S.music) startMusic();
   if (S.board.every(v => v < 0)) { for (let k = 0; k < 6; k++) plant(-1); }
 };
 
 fit(); syncToggles(); render();
-window.__garden = { S, plant, tap, drop, merge, get ac() { return ac; } };
+window.__garden = { bgm, S, plant, tap, drop, merge, get ac() { return ac; } };
 })();
 </script>
 </body>

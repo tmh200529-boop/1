@@ -1,0 +1,25 @@
+{
+  "window_title": "原神",
+  "hotkeys": {
+    "toggle_dialogue": "f6",
+    "toggle_pickup": "f7",
+    "toggle_combat": "f8",
+    "quit": "f9"
+  },
+  "dialogue": {
+    "interval": 0.35,
+    "_说明": "自动跳过剧情:检测到右下角“自动/跳过”按钮区域后,按空格推进,遇到选项按 F"
+  },
+  "pickup": {
+    "interval": 0.15
+  },
+  "combat": {
+    "_说明": "简易循环:普攻 + E + Q,按你的队伍自行修改顺序/间隔",
+    "sequence": [
+      {"key": "e", "hold": 0.1, "wait": 0.4},
+      {"key": "q", "hold": 0.05, "wait": 0.8},
+      {"click": "left", "times": 6, "wait": 0.25}
+    ],
+    "loop_delay": 0.2
+  }
+}

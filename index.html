@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>小马里奥冒险</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #111; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  body { display: flex; align-items: center; justify-content: center; }
+  #wrap { position: relative; width: 100vw; max-width: calc(100vh * 800 / 448); aspect-ratio: 800 / 448; }
+  canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; background: #5c94fc; }
+  #touch { display: none; position: absolute; inset: 0; pointer-events: none; }
+  @media (pointer: coarse) { #touch { display: block; } }
+  .btn {
+    position: absolute; bottom: 4%; width: 15%; aspect-ratio: 1; border-radius: 50%;
+    background: rgba(255,255,255,.28); border: 2px solid rgba(255,255,255,.6);
+    color: #fff; font: bold 20px/1 sans-serif; display: flex; align-items: center; justify-content: center;
+    pointer-events: auto;
+  }
+  .btn.on { background: rgba(255,255,255,.55); }
+  #bl { left: 3%; } #br { left: 20%; } #bb { right: 20%; } #ba { right: 3%; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="800" height="448"></canvas>
+  <div id="touch">
+    <div class="btn" id="bl" data-k="ArrowLeft">◀</div>
+    <div class="btn" id="br" data-k="ArrowRight">▶</div>
+    <div class="btn" id="bb" data-k="ShiftLeft">跑</div>
+    <div class="btn" id="ba" data-k="Space">跳</div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+// ---------- 常量 ----------
+const T = 32, ROWS = 14, COLS = 200, W = 800, H = 448;
+const GRAVITY = 0.5, MAX_FALL = 12;
+const EMPTY = 0, GROUND = 1, BRICK = 2, QUESTION = 3, USED = 4, PIPE = 5, STAIR = 6;
+
+// ---------- 输入 ----------
+const keys = {};
+const pressed = {};
+function setKey(code, down) {
+  if (down && !keys[code]) pressed[code] = true;
+  keys[code] = down;
+}
+addEventListener('keydown', e => {
+  if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
+  setKey(e.code, true);
+});
+addEventListener('keyup', e => setKey(e.code, false));
+document.querySelectorAll('.btn').forEach(b => {
+  const k = b.dataset.k;
+  const on = e => { e.preventDefault(); b.classList.add('on'); setKey(k, true); };
+  const off = e => { e.preventDefault(); b.classList.remove('on'); setKey(k, false); };
+  b.addEventListener('pointerdown', on);
+  b.addEventListener('pointerup', off);
+  b.addEventListener('pointercancel', off);
+  b.addEventListener('pointerleave', off);
+});
+cv.addEventListener('pointerdown', () => { pressed['Enter'] = true; });
+const left  = () => keys.ArrowLeft  || keys.KeyA;
+const right = () => keys.ArrowRight || keys.KeyD;
+const jumpHeld = () => keys.Space || keys.ArrowUp || keys.KeyW || keys.KeyZ;
+const jumpPressed = () => pressed.Space || pressed.ArrowUp || pressed.KeyW || pressed.KeyZ;
+const runHeld = () => keys.ShiftLeft || keys.ShiftRight || keys.KeyX;
+const startPressed = () => pressed.Enter || pressed.Space;
+
+// ---------- 音效 ----------
+let actx = null;
+function beep(freq, dur, type = 'square', vol = 0.06, slide = 0) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, actx.currentTime);
+    if (slide) o.frequency.linearRampToValueAtTime(freq + slide, actx.currentTime + dur);
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + dur);
+  } catch (e) {}
+}
+const sfx = {
+  jump:  () => beep(330, 0.18, 'square', 0.06, 330),
+  coin:  () => { beep(988, 0.08); setTimeout(() => beep(1319, 0.2), 70); },
+  stomp: () => beep(200, 0.12, 'square', 0.08, -120),
+  bump:  () => beep(120, 0.1, 'triangle', 0.1),
+  die:   () => { beep(440, 0.15); setTimeout(() => beep(330, 0.15), 150); setTimeout(() => beep(220, 0.4, 'square', 0.06, -100), 300); },
+  win:   () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.2), i * 140)),
+};
+
+// ---------- 关卡 ----------
+let grid, coins, enemies, particles, popups, flagX;
+
+function buildLevel() {
+  grid = Array.from({ length: ROWS }, () => new Array(COLS).fill(EMPTY));
+  coins = []; enemies = []; particles = []; popups = [];
+  const set = (x, y, t) => { if (x >= 0 && x < COLS && y >= 0 && y < ROWS) grid[y][x] = t; };
+  const ground = (a, b) => { for (let x = a; x <= b; x++) { set(x, 12, GROUND); set(x, 13, GROUND); } };
+  const pipe = (x, h) => { for (let i = 0; i < h; i++) { set(x, 11 - i, PIPE); set(x + 1, 11 - i, PIPE); } };
+  const row = (x, y, t, n = 1) => { for (let i = 0; i < n; i++) set(x + i, y, t); };
+  const coin = (x, y) => coins.push({ x: x * T + 8, y: y * T + 4, w: 16, h: 24, got: false });
+  const coinRow = (x, y, n) => { for (let i = 0; i < n; i++) coin(x + i, y); };
+  const enemy = x => enemies.push({ x: x * T, y: 12 * T - 28, w: 28, h: 28, vx: -0.8, vy: 0, state: 'walk', t: 0 });
+
+  // 地面（含坑）
+  ground(0, 68); ground(71, 85); ground(89, 135); ground(139, 199);
+
+  // 第一段
+  set(14, 8, QUESTION);
+  row(19, 8, BRICK); set(20, 8, QUESTION); set(21, 8, BRICK); set(22, 8, QUESTION); set(23, 8, BRICK);
+  set(21, 4, QUESTION);
+  pipe(30, 2); pipe(40, 3); pipe(50, 4);
+  coinRow(33, 9, 3);
+  enemy(24); enemy(36); enemy(45); enemy(58);
+
+  // 第一个坑前后
+  row(62, 8, BRICK, 3); set(64, 8, QUESTION);
+  coinRow(69, 9, 2);              // 坑上方
+  coinRow(70, 8, 1);
+
+  // 第二段
+  row(74, 9, BRICK, 2); set(76, 9, QUESTION); row(77, 9, BRICK, 2);
+  row(80, 5, BRICK, 5);
+  coinRow(80, 4, 5);
+  enemy(78); enemy(83);
+
+  // 第二个坑 (86-88)：用台阶连接
+  coinRow(86, 8, 3);
+
+  // 第三段
+  pipe(93, 2); pipe(100, 3);
+  set(96, 8, QUESTION); set(97, 8, BRICK); set(98, 8, QUESTION);
+  row(104, 8, BRICK, 3); set(105, 4, QUESTION); set(106, 4, QUESTION);
+  coinRow(108, 6, 4);
+  enemy(97); enemy(106); enemy(112); enemy(114); enemy(122);
+  row(118, 8, BRICK, 2); set(120, 8, QUESTION);
+  // 阶梯跳台
+  for (let i = 0; i < 4; i++) for (let j = 0; j <= i; j++) set(126 + i, 11 - j, STAIR);
+  for (let i = 0; i < 4; i++) for (let j = 0; j <= 3 - i; j++) set(131 + i, 11 - j, STAIR);
+
+  // 第三个坑 (136-138)
+  coinRow(136, 8, 3);
+
+  // 最后一段
+  enemy(145); enemy(150); enemy(158);
+  pipe(148, 2);
+  row(152, 8, BRICK, 2); set(154, 8, QUESTION); row(155, 8, BRICK, 2);
+  coinRow(153, 5, 4);
+  enemy(166); enemy(168);
+  // 终点阶梯
+  for (let i = 0; i < 8; i++) for (let j = 0; j <= i; j++) set(176 + i, 11 - j, STAIR);
+  flagX = 192 * T;
+  set(192, 11, STAIR);
+}
+
+// ---------- 玩家 ----------
+const player = {};
+const game = { state: 'title', score: 0, coins: 0, lives: 3, camX: 0, msgT: 0, frame: 0 };
+
+function resetPlayer() {
+  Object.assign(player, { x: 3 * T, y: 12 * T - 30, w: 22, h: 30, vx: 0, vy: 0, onGround: false,
+    face: 1, dead: false, coyote: 0, buffer: 0, anim: 0, won: false, winT: 0 });
+}
+function startLevel(fullReset) {
+  if (fullReset) { game.score = 0; game.lives = 3; }
+  game.coins = 0; game.camX = 0;
+  buildLevel(); resetPlayer();
+}
+
+// ---------- 碰撞 ----------
+function tileAt(tx, ty) {
+  if (tx < 0 || tx >= COLS) return STAIR;      // 世界两端是墙
+  if (ty < 0) return EMPTY;
+  if (ty >= ROWS) return EMPTY;
+  return grid[ty][tx];
+}
+const solid = t => t !== EMPTY;
+
+// 移动并碰撞，返回 {hitX, hitY(+1 下落着地, -1 撞头), bumps}
+function moveBox(b, onBump) {
+  const res = { hitX: false, ground: false };
+  b.x += b.vx;
+  let x0 = Math.floor(b.x / T), x1 = Math.floor((b.x + b.w - 0.01) / T);
+  let y0 = Math.floor(b.y / T), y1 = Math.floor((b.y + b.h - 0.01) / T);
+  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+    if (solid(tileAt(tx, ty))) {
+      if (b.vx > 0) b.x = tx * T - b.w; else if (b.vx < 0) b.x = (tx + 1) * T;
+      b.vx = 0; res.hitX = true;
+    }
+  }
+  b.y += b.vy;
+  x0 = Math.floor(b.x / T); x1 = Math.floor((b.x + b.w - 0.01) / T);
+  y0 = Math.floor(b.y / T); y1 = Math.floor((b.y + b.h - 0.01) / T);
+  let bumpCandidates = [];
+  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
+    if (solid(tileAt(tx, ty))) {
+      if (b.vy > 0) { b.y = ty * T - b.h; res.ground = true; }
+      else if (b.vy < 0) { b.y = (ty + 1) * T; bumpCandidates.push([tx, ty]); }
+      b.vy = 0;
+    }
+  }
+  if (onBump && bumpCandidates.length) {
+    // 只顶离玩家中心最近的那一块
+    const cx = b.x + b.w / 2;
+    bumpCandidates.sort((a, c) => Math.abs(a[0] * T + T / 2 - cx) - Math.abs(c[0] * T + T / 2 - cx));
+    onBump(bumpCandidates[0][0], bumpCandidates[0][1]);
+  }
+  return res;
+}
+
+const bumpAnim = {};   // "x,y" -> frames
+function bumpBlock(tx, ty) {
+  const t = grid[ty][tx];
+  if (t === QUESTION) {
+    grid[ty][tx] = USED; bumpAnim[tx + ',' + ty] = 10;
+    game.coins++; game.score += 200; sfx.coin();
+    particles.push({ kind: 'coin', x: tx * T + 8, y: ty * T - 8, vy: -9, life: 30 });
+    popups.push({ x: tx * T + 4, y: ty * T - 10, text: '200', life: 40 });
+    killEnemiesOn(tx, ty);
+  } else if (t === BRICK) {
+    bumpAnim[tx + ',' + ty] = 10; sfx.bump();
+    killEnemiesOn(tx, ty);
+  } else sfx.bump();
+}
+function killEnemiesOn(tx, ty) {
+  for (const e of enemies) {
+    if (e.state === 'walk' && e.x + e.w > tx * T && e.x < (tx + 1) * T && Math.abs(e.y + e.h - ty * T) < 4) {
+      e.state = 'flip'; e.vy = -6; e.vx = player.face * 1.5; game.score += 100; sfx.stomp();
+    }
+  }
+}
+
+// ---------- 更新 ----------
+function updatePlayer() {
+  const p = player;
+  if (p.dead) {
+    p.vy = Math.min(p.vy + GRAVITY, MAX_FALL); p.y += p.vy; p.winT++;
+    if (p.y > H + 150 && p.winT > 60) {
+      game.lives--;
+      if (game.lives <= 0) { game.state = 'over'; } else { startLevel(false); }
+    }
+    return;
+  }
+  if (p.won) {
+    // 自动走向城堡
+    p.vx = 1.5; p.face = 1; p.vy = Math.min(p.vy + GRAVITY, MAX_FALL);
+    moveBox(p); p.anim += 0.2; p.winT++;
+    if (p.winT > 150) game.state = 'win';
+    return;
+  }
+  const run = runHeld();
+  const maxV = run ? 4.6 : 3;
+  const acc = p.onGround ? 0.45 : 0.28;
+  if (left() && !right()) { p.vx -= acc; p.face = -1; }
+  else if (right() && !left()) { p.vx += acc; p.face = 1; }
+  else if (p.onGround) { p.vx *= 0.8; if (Math.abs(p.vx) < 0.1) p.vx = 0; }
+  else p.vx *= 0.98;
+  p.vx = Math.max(-maxV, Math.min(maxV, p.vx));
+
+  // 跳跃（土狼时间 + 提前按键缓冲）
+  if (jumpPressed()) p.buffer = 6;
+  if (p.onGround) p.coyote = 6; else if (p.coyote > 0) p.coyote--;
+  if (p.buffer > 0) p.buffer--;
+  if (p.buffer > 0 && p.coyote > 0) {
+    p.vy = -10.8 - Math.abs(p.vx) * 0.25; p.buffer = 0; p.coyote = 0; p.onGround = false; sfx.jump();
+  }
+  const g = (p.vy < 0 && jumpHeld()) ? GRAVITY * 0.55 : GRAVITY;
+  p.vy = Math.min(p.vy + g, MAX_FALL);
+
+  const r = moveBox(p, bumpBlock);
+  p.onGround = r.ground;
+  if (p.onGround) p.anim += Math.abs(p.vx) * 0.08; else p.anim = 1;
+
+  if (p.y > H + 40) killPlayer();
+
+  // 金币
+  for (const c of coins) if (!c.got && overlap(p, c)) {
+    c.got = true; game.coins++; game.score += 100; sfx.coin();
+    popups.push({ x: c.x, y: c.y, text: '100', life: 30 });
+  }
+  // 终点旗
+  if (p.x + p.w > flagX + 14 && !p.won) {
+    p.won = true; p.winT = 0; sfx.win(); game.score += 1000 + Math.max(0, Math.round((12 * T - p.y) * 2));
+  }
+}
+
+function killPlayer() {
+  if (player.dead) return;
+  player.dead = true; player.vy = -9; player.vx = 0; player.winT = 0; sfx.die();
+}
+const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+function updateEnemies() {
+  const p = player;
+  for (const e of enemies) {
+    if (e.state === 'squash') { if (++e.t > 30) e.state = 'gone'; continue; }
+    if (e.state === 'gone') continue;
+    if (e.state === 'flip') { e.vy = Math.min(e.vy + GRAVITY, MAX_FALL); e.x += e.vx; e.y += e.vy; if (e.y > H + 100) e.state = 'gone'; continue; }
+    if (Math.abs(e.x - game.camX - W / 2) > W / 2 + 160) continue;   // 屏幕外不活动
+    e.vy = Math.min(e.vy + GRAVITY, MAX_FALL);
+    const dir = e.vx || -0.8;
+    const r = moveBox(e);
+    if (r.hitX) e.vx = -Math.sign(dir) * 0.8; else e.vx = Math.sign(dir) * 0.8;
+    e.anim = (e.anim || 0) + 0.12;
+    if (e.y > H + 60) e.state = 'gone';
+
+    if (!p.dead && !p.won && overlap(p, e)) {
+      if (p.vy > 0 && p.y + p.h - p.vy <= e.y + 12) {
+        e.state = 'squash'; e.t = 0; p.vy = jumpHeld() ? -10 : -6.5;
+        game.score += 100; sfx.stomp();
+        popups.push({ x: e.x, y: e.y - 6, text: '100', life: 30 });
+      } else killPlayer();
+    }
+  }
+}
+
+function updateFx() {
+  for (const k in bumpAnim) if (--bumpAnim[k] <= 0) delete bumpAnim[k];
+  for (const q of particles) { q.vy += 0.6; q.y += q.vy; q.life--; }
+  particles = particles.filter(q => q.life > 0);
+  for (const q of popups) { q.y -= 0.8; q.life--; }
+  popups = popups.filter(q => q.life > 0);
+}
+
+function update() {
+  game.frame++;
+  if (game.state === 'title') {
+    if (startPressed()) { startLevel(true); game.state = 'play'; }
+  } else if (game.state === 'play') {
+    updatePlayer(); updateEnemies(); updateFx();
+    const target = player.x + player.w / 2 - W / 2 + 60;
+    game.camX += (target - game.camX) * 0.15;
+    game.camX = Math.max(0, Math.min(COLS * T - W, game.camX));
+  } else if (startPressed()) {
+    startLevel(true); game.state = 'play';
+  }
+  for (const k in pressed) delete pressed[k];
+}
+
+// ---------- 绘制 ----------
+function rect(c, x, y, w, h) { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), w, h); }
+
+function drawBackground() {
+  rect('#5c94fc', 0, 0, W, H);
+  // 远山
+  const hx = -(game.camX * 0.3) % 640;
+  for (let i = -1; i < 3; i++) {
+    const bx = hx + i * 640;
+    ctx.fillStyle = '#3fae45';
+    ctx.beginPath(); ctx.moveTo(bx + 60, 12 * T); ctx.lineTo(bx + 200, 12 * T - 130); ctx.lineTo(bx + 340, 12 * T); ctx.fill();
+    ctx.fillStyle = '#2f9a3a';
+    ctx.beginPath(); ctx.moveTo(bx + 280, 12 * T); ctx.lineTo(bx + 420, 12 * T - 90); ctx.lineTo(bx + 560, 12 * T); ctx.fill();
+  }
+  // 云
+  const cx = -(game.camX * 0.5) % 520;
+  for (let i = -1; i < 3; i++) {
+    const bx = cx + i * 520;
+    drawCloud(bx + 80, 60, 1); drawCloud(bx + 330, 110, 0.75);
+  }
+}
+function drawCloud(x, y, s) {
+  ctx.fillStyle = '#fff';
+  for (const [dx, dy, r] of [[0, 0, 18], [24, -10, 24], [52, 0, 18], [26, 6, 18]]) {
+    ctx.beginPath(); ctx.arc(x + dx * s, y + dy * s, r * s, 0, 7); ctx.fill();
+  }
+}
+
+function drawTile(t, x, y, tx, ty) {
+  const off = bumpAnim[tx + ',' + ty] ? -Math.sin(bumpAnim[tx + ',' + ty] / 10 * Math.PI) * 8 : 0;
+  y += off;
+  switch (t) {
+    case GROUND:
+      rect('#c84c0c', x, y, T, T);
+      rect('#e69a2e', x, y, T, 4);
+      rect('#7a2c00', x, y + T - 2, T, 2); rect('#7a2c00', x + T - 2, y, 2, T);
+      rect('#7a2c00', x + 8, y + 12, 10, 2); rect('#7a2c00', x + 18, y + 22, 8, 2);
+      break;
+    case BRICK:
+      rect('#b5541c', x, y, T, T);
+      rect('#e0a070', x, y, T, 2);
+      ctx.fillStyle = '#5a2400';
+      ctx.fillRect(x, y + 10, T, 2); ctx.fillRect(x, y + 21, T, 2);
+      ctx.fillRect(x + 15, y, 2, 10); ctx.fillRect(x + 7, y + 12, 2, 9); ctx.fillRect(x + 23, y + 12, 2, 9); ctx.fillRect(x + 15, y + 23, 2, 9);
+      break;
+    case QUESTION: {
+      const f = Math.floor(game.frame / 12) % 4;
+      rect(f === 3 ? '#fcd070' : '#f8a800', x, y, T, T);
+      rect('#fff0b0', x, y, T, 2); rect('#a05800', x, y + T - 2, T, 2); rect('#a05800', x + T - 2, y, 2, T);
+      rect('#a05800', x + 2, y + 2, 3, 3); rect('#a05800', x + T - 5, y + 2, 3, 3);
+      rect('#a05800', x + 2, y + T - 5, 3, 3); rect('#a05800', x + T - 5, y + T - 5, 3, 3);
+      ctx.fillStyle = '#6a2c00'; ctx.font = 'bold 22px monospace'; ctx.textAlign = 'center';
+      ctx.fillText('?', x + T / 2, y + 24);
+      break;
+    }
+    case USED:
+      rect('#8a6a40', x, y, T, T); rect('#6a4a20', x + 2, y + 2, T - 4, T - 4);
+      rect('#a08050', x + 2, y + 2, T - 4, 2);
+      break;
+    case PIPE: {
+      const top = tileAt(tx, ty - 1) !== PIPE, lft = tileAt(tx - 1, ty) !== PIPE;
+      if (top) {
+        rect('#00a800', x - (lft ? 2 : 0), y, T + 2, T);
+        rect('#80e880', x - (lft ? 2 : 0) + 4, y + 2, 4, T - 4);
+        rect('#005800', x - (lft ? 2 : 0), y + T - 2, T + 2, 2);
+      } else {
+        rect('#00a800', x + 2, y, T - 4, T);
+        if (lft) rect('#80e880', x + 6, y, 4, T); else rect('#005800', x + T - 8, y, 6, T);
+      }
+      break;
+    }
+    case STAIR:
+      rect('#a88060', x, y, T, T);
+      rect('#e8d0a8', x, y, T, 3); rect('#e8d0a8', x, y, 3, T);
+      rect('#503820', x, y + T - 3, T, 3); rect('#503820', x + T - 3, y, 3, T);
+      break;
+  }
+}
+
+function drawPlayer() {
+  const p = player;
+  ctx.save();
+  ctx.translate(Math.round(p.x - game.camX + p.w / 2), Math.round(p.y));
+  ctx.scale(p.face, 1);
+  const X = -11;
+  const step = Math.floor(p.anim * 2) % 2;
+  const air = !p.onGround && !p.dead;
+  // 鞋
+  const sh = p.dead || air ? [[X - 1, 26], [X + 14, 24]] : (Math.abs(p.vx) > 0.3 ? (step ? [[X + 1, 26], [X + 12, 27]] : [[X + 4, 27], [X + 9, 26]]) : [[X + 1, 26], [X + 12, 26]]);
+  ctx.fillStyle = '#6b3a10';
+  for (const [sx, sy] of sh) ctx.fillRect(sx, sy, 9, 4);
+  // 裤子
+  ctx.fillStyle = '#2038ec'; ctx.fillRect(X + 2, 16, 18, 10); ctx.fillRect(X + 4, 22, 14, 5);
+  // 衣服
+  ctx.fillStyle = '#e03020'; ctx.fillRect(X, 14, 22, 5);
+  ctx.fillRect(air ? X + 18 : X + 18, air ? 8 : 16, 4, 6);
+  ctx.fillStyle = '#ffd000'; ctx.fillRect(X + 5, 18, 3, 3); ctx.fillRect(X + 14, 18, 3, 3);
+  // 脸
+  ctx.fillStyle = '#ffc890'; ctx.fillRect(X + 3, 6, 17, 9);
+  ctx.fillStyle = '#6b3a10'; ctx.fillRect(X + 11, 11, 9, 3); ctx.fillRect(X + 3, 6, 3, 6);
+  ctx.fillStyle = '#000'; ctx.fillRect(X + 14, 7, 3, 4);
+  // 帽子
+  ctx.fillStyle = '#e03020'; ctx.fillRect(X + 3, 1, 15, 5); ctx.fillRect(X + 3, 4, 19, 3);
+  ctx.restore();
+}
+
+function drawEnemy(e) {
+  if (e.state === 'gone') return;
+  const x = Math.round(e.x - game.camX), y = Math.round(e.y);
+  if (x < -40 || x > W + 40) return;
+  ctx.save();
+  if (e.state === 'flip') { ctx.translate(x + 14, y + 14); ctx.scale(1, -1); ctx.translate(-14, -14); } else ctx.translate(x, y);
+  if (e.state === 'squash') {
+    rect('#a05020', 0, 20, 28, 8); rect('#000', 6, 22, 4, 2); rect('#000', 18, 22, 4, 2);
+  } else {
+    const step = Math.floor((e.anim || 0)) % 2;
+    ctx.fillStyle = '#a05020'; ctx.beginPath(); ctx.arc(14, 12, 14, Math.PI, 0); ctx.fillRect(0, 12, 28, 6); ctx.fill();
+    ctx.fillStyle = '#ffd8a0'; ctx.fillRect(6, 16, 16, 8);
+    ctx.fillStyle = '#fff'; ctx.fillRect(5, 8, 8, 8); ctx.fillRect(15, 8, 8, 8);
+    ctx.fillStyle = '#000'; ctx.fillRect(9, 10, 3, 6); ctx.fillRect(16, 10, 3, 6);
+    ctx.fillRect(4, 6, 8, 2); ctx.fillRect(16, 6, 8, 2);
+    ctx.fillStyle = '#000'; ctx.fillRect(step ? 0 : 3, 24, 11, 4); ctx.fillRect(step ? 17 : 14, 24, 11, 4);
+  }
+  ctx.restore();
+}
+
+function drawFlag() {
+  const x = flagX - game.camX;
+  if (x < -60 || x > W + 60) return;
+  rect('#fff', x + 14, 3 * T, 4, 8 * T + 0);
+  ctx.fillStyle = '#00a800'; ctx.beginPath(); ctx.arc(x + 16, 3 * T - 6, 7, 0, 7); ctx.fill();
+  const fy = player.won ? Math.min(10 * T - 20, 3 * T + 20 + player.winT * 3) : 3 * T + 20;
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(x + 14, fy - 26); ctx.lineTo(x - 18, fy - 12); ctx.lineTo(x + 14, fy + 2); ctx.fill();
+  ctx.fillStyle = '#e03020'; ctx.beginPath(); ctx.arc(x - 4, fy - 12, 4, 0, 7); ctx.fill();
+  // 城堡
+  const cx = x + 3 * T;
+  rect('#a05020', cx, 8 * T, 4 * T, 4 * T);
+  for (let i = 0; i < 4; i++) rect('#a05020', cx + i * T, 8 * T - 12, 20, 12);
+  rect('#000', cx + 1.5 * T, 10 * T, T, 2 * T);
+  rect('#6a2c00', cx, 9 * T, 4 * T, 3);
+}
+
+function drawText(txt, x, y, size, color = '#fff', align = 'center') {
+  ctx.font = `bold ${size}px "Courier New", monospace`;
+  ctx.textAlign = align;
+  ctx.fillStyle = '#000'; ctx.fillText(txt, x + 2, y + 2);
+  ctx.fillStyle = color; ctx.fillText(txt, x, y);
+}
+
+function draw() {
+  drawBackground();
+  const c0 = Math.max(0, Math.floor(game.camX / T)), c1 = Math.min(COLS - 1, c0 + W / T + 1);
+  if (grid) {
+    for (let ty = 0; ty < ROWS; ty++) for (let tx = c0; tx <= c1; tx++) {
+      const t = grid[ty][tx];
+      if (t) drawTile(t, Math.round(tx * T - game.camX), ty * T, tx, ty);
+    }
+    drawFlag();
+    for (const c of coins) if (!c.got) {
+      const x = c.x - game.camX; if (x < -30 || x > W + 30) continue;
+      const w = Math.abs(Math.cos(game.frame / 14)) * 14 + 2;
+      rect('#a05800', x + 8 - w / 2 - 1, c.y - 1, w + 2, 26);
+      rect('#ffd000', x + 8 - w / 2, c.y, w, 24);
+      rect('#fff4a0', x + 8 - w / 2 + 1, c.y + 3, Math.max(1, w / 4), 14);
+    }
+    enemies.forEach(drawEnemy);
+    for (const q of particles) {
+      rect('#ffd000', q.x - game.camX, q.y, 14, 18); rect('#fff4a0', q.x - game.camX + 3, q.y + 3, 4, 10);
+    }
+    drawPlayer();
+    for (const q of popups) drawText(q.text, q.x - game.camX + 14, q.y, 14);
+  }
+
+  // HUD
+  if (game.state !== 'title') {
+    drawText('得分 ' + String(game.score).padStart(6, '0'), 16, 28, 20, '#fff', 'left');
+    drawText('金币 ×' + String(game.coins).padStart(2, '0'), 300, 28, 20, '#ffd000', 'left');
+    drawText('生命 ×' + game.lives, 480, 28, 20, '#fff', 'left');
+    drawText('1-1', W - 20, 28, 20, '#fff', 'right');
+  }
+
+  const overlay = (a) => { ctx.fillStyle = `rgba(0,0,0,${a})`; ctx.fillRect(0, 0, W, H); };
+  if (game.state === 'title') {
+    overlay(0.45);
+    drawText('小马里奥冒险', W / 2, 140, 54, '#ff5040');
+    drawText('踩扁蘑菇怪，顶开问号砖，到达终点旗杆！', W / 2, 190, 18);
+    drawText('← → / A D 移动    空格 / ↑ / W 跳跃    Shift / X 加速', W / 2, 250, 16, '#ffe080');
+    if (Math.floor(game.frame / 30) % 2 === 0) drawText('按 回车 / 空格 / 点击屏幕 开始', W / 2, 330, 24);
+  } else if (game.state === 'over') {
+    overlay(0.6);
+    drawText('游戏结束', W / 2, 190, 52, '#ff5040');
+    drawText('最终得分 ' + game.score, W / 2, 245, 24);
+    if (Math.floor(game.frame / 30) % 2 === 0) drawText('按 回车 / 空格 / 点击 重新开始', W / 2, 310, 22);
+  } else if (game.state === 'win') {
+    overlay(0.5);
+    drawText('通关啦！🎉', W / 2, 180, 52, '#ffd000');
+    drawText('最终得分 ' + game.score + '    金币 ' + game.coins, W / 2, 240, 24);
+    if (Math.floor(game.frame / 30) % 2 === 0) drawText('按 回车 / 空格 / 点击 再玩一次', W / 2, 310, 22);
+  }
+}
+
+// ---------- 主循环（固定 60 FPS 步长） ----------
+buildLevel(); resetPlayer();
+let last = performance.now(), acc = 0;
+function loop(now) {
+  acc += Math.min(100, now - last); last = now;
+  while (acc >= 1000 / 60) { update(); acc -= 1000 / 60; }
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// 供自动化测试读取
+window.__game = { game, player, get enemies() { return enemies; } };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>星语花园</title>
+<style>
+  :root {
+    --pink: #ffd6e8; --pink2: #ff9ec8; --lav: #e4d4ff; --cream: #fff7ee; --ink: #6b4a78; --gold: #ffc94d;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; color: var(--ink);
+    background: linear-gradient(160deg, #ffe3f1 0%, #e9ddff 55%, #d8ecff 100%);
+    display: flex; justify-content: center;
+  }
+  #petals { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+  .petal { position: absolute; top: -40px; opacity: .75; animation: fall linear infinite; }
+  @keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }
+
+  #app { position: relative; z-index: 1; width: 100%; max-width: 480px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+  header { display: flex; align-items: center; justify-content: space-between; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: 2px; }
+  .pill { background: rgba(255,255,255,.75); border-radius: 999px; padding: 5px 12px; font-weight: 700; font-size: 15px; box-shadow: 0 2px 8px rgba(180,120,200,.2); }
+  .tools { display: flex; gap: 6px; align-items: center; }
+  .icon-btn { width: 38px; height: 38px; border-radius: 50%; border: 0; background: rgba(255,255,255,.85); font-size: 19px; cursor: pointer; box-shadow: 0 2px 8px rgba(180,120,200,.25); }
+  .icon-btn:active { transform: scale(.92); }
+  .icon-btn.off { opacity: .45; }
+
+  #garden { background: rgba(255,255,255,.55); border-radius: 16px; padding: 6px 10px; font-size: 13px; display: flex; align-items: center; gap: 8px; min-height: 40px; }
+  #decor { font-size: 22px; letter-spacing: 2px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #next { opacity: .75; white-space: nowrap; }
+
+  #orders { display: flex; gap: 8px; }
+  .order { flex: 1; background: rgba(255,255,255,.85); border-radius: 16px; padding: 6px 4px; text-align: center; font-size: 12px; box-shadow: 0 3px 10px rgba(180,120,200,.18); transition: transform .3s; }
+  .order .em { font-size: 28px; line-height: 1.1; }
+  .order .bar { height: 6px; background: #f1e4f7; border-radius: 3px; margin: 4px 8px 2px; overflow: hidden; }
+  .order .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--pink2), var(--gold)); transition: width .3s; }
+  .order.done { transform: scale(1.08); }
+
+  #boardWrap { display: flex; justify-content: center; }
+  #board {
+    width: min(100%, calc((100dvh - 290px) / 1.2)); aspect-ratio: 5 / 6;
+    display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(6, 1fr); gap: 6px;
+    background: rgba(255,255,255,.5); padding: 8px; border-radius: 22px; box-shadow: 0 6px 20px rgba(160,110,200,.25);
+  }
+  .cell { position: relative; border-radius: 16px; background: linear-gradient(145deg, #fff, #f6ecff); box-shadow: inset 0 -3px 0 rgba(200,160,230,.25); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .cell.empty:active { background: #ffe8f3; }
+  .cell.sel { outline: 3px solid var(--pink2); background: #fff0f7; }
+  .cell.target { outline: 3px dashed var(--gold); }
+  .item { font-size: var(--fs, 34px); line-height: 1; filter: drop-shadow(0 3px 2px rgba(120,80,150,.25)); transition: transform .12s; pointer-events: none; }
+  .cell.hidden .item { opacity: .25; }
+  .cell .lv { position: absolute; right: 5px; bottom: 2px; font-size: 10px; opacity: .45; font-weight: 700; }
+  .pop { animation: pop .35s ease-out; }
+  @keyframes pop { 0% { transform: scale(.4); } 60% { transform: scale(1.3); } 100% { transform: scale(1); } }
+  .spark { position: fixed; pointer-events: none; z-index: 30; font-size: 18px; animation: spark .7s ease-out forwards; }
+  @keyframes spark { to { transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 0; } }
+  #ghost { position: fixed; z-index: 40; pointer-events: none; font-size: var(--fs, 34px); transform: translate(-50%, -60%) scale(1.25); display: none; filter: drop-shadow(0 8px 6px rgba(100,60,140,.35)); }
+
+  #bottom { display: flex; gap: 8px; justify-content: center; }
+  .btn { border: 0; border-radius: 999px; padding: 9px 16px; font-size: 15px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #ff9ec8, #c79bff); box-shadow: 0 4px 12px rgba(190,110,200,.4); cursor: pointer; }
+  .btn:active { transform: scale(.96); }
+  .btn.ghostbtn { background: rgba(255,255,255,.85); color: var(--ink); box-shadow: 0 2px 8px rgba(180,120,200,.25); }
+  #tip { text-align: center; font-size: 12px; opacity: .7; }
+
+  #toast { position: fixed; left: 50%; top: 16%; transform: translate(-50%, -20px); background: rgba(255,255,255,.95); padding: 10px 20px; border-radius: 999px; font-weight: 700; box-shadow: 0 6px 20px rgba(160,100,200,.35); opacity: 0; transition: .3s; z-index: 60; pointer-events: none; white-space: nowrap; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  .overlay { position: fixed; inset: 0; z-index: 50; background: rgba(120,80,160,.35); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 18px; }
+  .overlay.show { display: flex; }
+  .card { background: var(--cream); border-radius: 26px; padding: 20px; width: min(420px, 100%); max-height: 88vh; overflow: auto; text-align: center; box-shadow: 0 10px 40px rgba(100,50,150,.4); }
+  .card h2 { margin: 0 0 6px; }
+  .card p { margin: 6px 0 14px; font-size: 14px; line-height: 1.6; }
+  #book { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+  .bk { background: #fff; border-radius: 14px; padding: 8px 2px; font-size: 11px; }
+  .bk .em { font-size: 32px; display: block; }
+  .bk.lock .em { filter: brightness(0); opacity: .18; }
+  .bk.lock span { opacity: .4; }
+  #startCard .big { font-size: 64px; }
+</style>
+</head>
+<body>
+<div id="petals"></div>
+<div id="app">
+  <header>
+    <h1>🌸 星语花园</h1>
+    <div class="tools">
+      <span class="pill" id="stars">⭐ 0</span>
+      <button class="icon-btn" id="btnMusic" title="背景音乐">🎵</button>
+      <button class="icon-btn" id="btnSfx" title="音效">🔔</button>
+      <button class="icon-btn" id="btnBook" title="图鉴">📖</button>
+    </div>
+  </header>
+  <div id="garden"><span>我的花园</span><span id="decor"></span><span id="next"></span></div>
+  <div id="orders"></div>
+  <div id="boardWrap"><div id="board"></div></div>
+  <div id="bottom">
+    <button class="btn ghostbtn" id="btnClean">🧹 清理种子</button>
+    <button class="btn" id="btnPlant">🌰 随机种一颗</button>
+  </div>
+  <div id="tip">点空格子种种子 · 拖动或依次点两个相同的合成 · 点最高级的可以收获</div>
+</div>
+
+<div id="ghost"></div>
+<div id="toast"></div>
+
+<div class="overlay show" id="startCard">
+  <div class="card">
+    <div class="big">🌸</div>
+    <h2>星语花园</h2>
+    <p>把相同的小东西合在一起，<br>种子会慢慢变成花、蝴蝶、彩虹和花园精灵～<br>没有时间限制，慢慢玩，开心就好 ✨</p>
+    <button class="btn" id="btnStart">开始游戏 🎵</button>
+  </div>
+</div>
+<div class="overlay" id="bookCard">
+  <div class="card">
+    <h2>📖 花园图鉴</h2>
+    <p id="bookInfo"></p>
+    <div id="book"></div>
+    <button class="btn" id="btnBookClose">关闭</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---------- 数据 ----------
+const ITEMS = [
+  ['🌰', '种子'], ['🌱', '嫩芽'], ['🌿', '小草'], ['🌼', '雏菊'], ['🌷', '郁金香'], ['🌹', '玫瑰'],
+  ['🌻', '向日葵'], ['💐', '花束'], ['🦋', '蝴蝶'], ['🐰', '小兔'], ['🌈', '彩虹'], ['🧚', '花园精灵'],
+];
+const MAXLV = ITEMS.length - 1;
+const COLS = 5, ROWS = 6, N = COLS * ROWS;
+const DECORS = [[3, '🏡'], [8, '⛲'], [15, '🎠'], [24, '🪁'], [36, '🏰'], [50, '🎡'], [70, '🚀'], [100, '🌟']];
+const $ = id => document.getElementById(id);
+
+let S = { board: new Array(N).fill(-1), found: [0], stars: 0, orders: [], music: true, sfx: true };
+function save() { try { localStorage.setItem('garden-v1', JSON.stringify(S)); } catch (e) {} }
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem('garden-v1'));
+    if (d && Array.isArray(d.board) && d.board.length === N) S = Object.assign(S, d);
+  } catch (e) {}
+}
+load();
+
+// ---------- 音频：音效 + 实时合成的背景音乐 ----------
+let ac = null, master, musicGain, sfxGain, musicTimer = null;
+const mtof = n => 440 * Math.pow(2, (n - 69) / 12);
+function initAudio() {
+  if (ac) return;
+  try {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    master = ac.createGain(); master.gain.value = 0.9; master.connect(ac.destination);
+    musicGain = ac.createGain(); musicGain.gain.value = S.music ? 1 : 0;
+    sfxGain = ac.createGain(); sfxGain.gain.value = S.sfx ? 1 : 0;
+    // 轻轻的回声，让音色更梦幻
+    const delay = ac.createDelay(1); delay.delayTime.value = 0.34;
+    const fb = ac.createGain(); fb.gain.value = 0.32;
+    const wet = ac.createGain(); wet.gain.value = 0.35;
+    delay.connect(fb); fb.connect(delay); delay.connect(wet); wet.connect(master);
+    musicGain.connect(master); musicGain.connect(delay);
+    sfxGain.connect(master); sfxGain.connect(delay);
+  } catch (e) { ac = null; }
+}
+function tone(dest, freq, t, dur, type, vol, attack = 0.01) {
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(vol, t + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(dest);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+// 和弦进行 C - Am - F - G，每小节 8 个八分音符
+const CHORDS = [[48, 52, 55], [45, 48, 52], [41, 45, 48], [43, 47, 50]];
+const ARP = [0, 1, 2, 1, 0, 1, 2, 1];
+const MELODY = [
+  76, 0, 72, 0, 74, 0, 67, 0,   72, 0, 69, 0, 72, 0, 76, 0,
+  74, 0, 72, 0, 69, 0, 72, 0,   67, 0, 74, 0, 72, 0, 0, 0,
+  72, 0, 76, 0, 79, 0, 76, 0,   76, 0, 72, 0, 69, 0, 72, 0,
+  74, 0, 69, 0, 72, 0, 74, 0,   72, 0, 0, 0, 67, 0, 0, 0,
+];
+const BPM = 74, STEP = 60 / BPM / 2;
+let nextT = 0, stepNo = 0;
+function scheduleMusic() {
+  if (!ac) return;
+  while (nextT < ac.currentTime + 0.35) {
+    const bar = Math.floor(stepNo / 8) % 8, s = stepNo % 8;
+    const chord = CHORDS[bar % 4];
+    if (s === 0) chord.forEach(n => tone(musicGain, mtof(n), nextT, STEP * 8, 'triangle', 0.028, 0.25));
+    tone(musicGain, mtof(chord[ARP[s]] + 12), nextT, STEP * 1.6, 'sine', 0.035);
+    const m = MELODY[(bar * 8 + s) % MELODY.length];
+    if (m) {
+      tone(musicGain, mtof(m), nextT, STEP * 2.6, 'sine', 0.075, 0.015);
+      tone(musicGain, mtof(m + 12), nextT, STEP * 1.2, 'triangle', 0.015, 0.01);
+    }
+    nextT += STEP; stepNo++;
+  }
+}
+function startMusic() {
+  initAudio(); if (!ac) return;
+  if (ac.state === 'suspended') ac.resume();
+  if (musicTimer) return;
+  nextT = ac.currentTime + 0.1; stepNo = 0;
+  musicTimer = setInterval(scheduleMusic, 120);
+}
+document.addEventListener('visibilitychange', () => {
+  if (!ac) return;
+  if (document.hidden) ac.suspend(); else ac.resume();
+});
+const PENTA = [0, 2, 4, 7, 9];
+function noteForLevel(l) { return 72 + PENTA[l % 5] + 12 * Math.floor(l / 5) - 12; }
+const sfx = {
+  plant() { if (!ac) return; tone(sfxGain, 660, ac.currentTime, 0.12, 'sine', 0.12); },
+  merge(l) {
+    if (!ac) return; const t = ac.currentTime, n = noteForLevel(l);
+    tone(sfxGain, mtof(n), t, 0.4, 'sine', 0.16);
+    tone(sfxGain, mtof(n + 7), t + 0.08, 0.5, 'triangle', 0.1);
+    tone(sfxGain, mtof(n + 12), t + 0.16, 0.6, 'sine', 0.08);
+  },
+  done() { if (!ac) return; [72, 76, 79, 84].forEach((n, i) => tone(sfxGain, mtof(n), ac.currentTime + i * 0.1, 0.5, 'sine', 0.13)); },
+  bad() { if (!ac) return; tone(sfxGain, 220, ac.currentTime, 0.18, 'triangle', 0.1); },
+};
+
+// ---------- 界面辅助 ----------
+let toastTimer;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+}
+function sparkle(el, n = 8, ch = ['✨', '💖', '⭐', '🌸']) {
+  const r = el.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  for (let i = 0; i < n; i++) {
+    const s = document.createElement('span'); s.className = 'spark';
+    s.textContent = ch[i % ch.length]; s.style.left = cx + 'px'; s.style.top = cy + 'px';
+    const a = Math.random() * 6.28, d = 40 + Math.random() * 50;
+    s.style.setProperty('--dx', Math.cos(a) * d + 'px'); s.style.setProperty('--dy', Math.sin(a) * d + 'px');
+    document.body.appendChild(s); setTimeout(() => s.remove(), 750);
+  }
+}
+(function petals() {
+  const box = $('petals'), ch = ['🌸', '✨', '🌷', '💮'];
+  for (let i = 0; i < 12; i++) {
+    const p = document.createElement('span'); p.className = 'petal'; p.textContent = ch[i % ch.length];
+    p.style.left = Math.random() * 100 + '%'; p.style.fontSize = 12 + Math.random() * 14 + 'px';
+    p.style.animationDuration = 9 + Math.random() * 10 + 's'; p.style.animationDelay = -Math.random() * 15 + 's';
+    box.appendChild(p);
+  }
+})();
+
+// ---------- 棋盘 ----------
+const boardEl = $('board'), cells = [];
+for (let i = 0; i < N; i++) {
+  const c = document.createElement('div'); c.className = 'cell empty'; c.dataset.i = i;
+  boardEl.appendChild(c); cells.push(c);
+}
+let selected = -1;
+function fit() { boardEl.style.setProperty('--fs', Math.floor(boardEl.clientWidth / COLS * 0.58) + 'px'); $('ghost').style.setProperty('--fs', Math.floor(boardEl.clientWidth / COLS * 0.58) + 'px'); }
+addEventListener('resize', fit);
+
+function render() {
+  for (let i = 0; i < N; i++) {
+    const c = cells[i], lv = S.board[i];
+    c.classList.toggle('empty', lv < 0);
+    c.classList.toggle('sel', i === selected);
+    c.innerHTML = lv < 0 ? '' : `<span class="item">${ITEMS[lv][0]}</span><span class="lv">${lv + 1}</span>`;
+  }
+  $('stars').textContent = '⭐ ' + S.stars;
+  renderOrders(); renderDecor();
+}
+function popCell(i) {
+  const it = cells[i].querySelector('.item'); if (it) { it.classList.remove('pop'); void it.offsetWidth; it.classList.add('pop'); }
+  sparkle(cells[i]);
+}
+
+function discover(lv) {
+  if (!S.found.includes(lv)) {
+    S.found.push(lv);
+    setTimeout(() => toast(`✨ 新发现：${ITEMS[lv][0]} ${ITEMS[lv][1]}`), 250);
+  }
+}
+function plant(i) {
+  if (i < 0) i = S.board.findIndex(v => v < 0);
+  if (i < 0 || S.board[i] >= 0) { toast('花园满啦，先合成或清理一下吧～'); sfx.bad(); return; }
+  S.board[i] = Math.random() < 0.12 ? 1 : 0;
+  sfx.plant(); render(); popCell(i); save();
+}
+function merge(a, b) {
+  const lv = S.board[a] + 1;
+  S.board[a] = -1; S.board[b] = lv; selected = -1;
+  discover(lv); sfx.merge(lv); progress(lv);
+  render(); popCell(b); sparkle(cells[b], 6); save();
+}
+function harvest(i) {
+  const lv = S.board[i], gain = 3 + Math.floor(lv / 2);
+  S.board[i] = -1; S.stars += gain; selected = -1;
+  sfx.done(); sparkle(cells[i], 12); toast(`🎉 收获 ${ITEMS[lv][0]} +${gain} ⭐`);
+  render(); save();
+}
+function tap(i) {
+  const lv = S.board[i];
+  if (lv < 0) { plant(i); return; }
+  if (lv === MAXLV) { harvest(i); return; }
+  if (selected < 0) { selected = i; render(); return; }
+  if (selected === i) { selected = -1; render(); return; }
+  if (S.board[selected] === lv) { merge(selected, i); return; }
+  selected = i; render(); sfx.bad();
+}
+function drop(from, to) {
+  selected = -1;
+  if (from === to) { render(); return; }
+  const a = S.board[from], b = S.board[to];
+  if (b < 0) { S.board[to] = a; S.board[from] = -1; render(); save(); }
+  else if (a === b && a < MAXLV) merge(from, to);
+  else { S.board[to] = a; S.board[from] = b; render(); save(); }
+}
+
+// 拖拽 / 点击
+let drag = null;
+const ghost = $('ghost');
+boardEl.addEventListener('pointerdown', e => {
+  const c = e.target.closest('.cell'); if (!c) return;
+  const i = +c.dataset.i; if (S.board[i] < 0) return;
+  drag = { i, x: e.clientX, y: e.clientY, moved: false };
+  initAudio();
+});
+addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 8) {
+    drag.moved = true; selected = -1;
+    ghost.textContent = ITEMS[S.board[drag.i]][0]; ghost.style.display = 'block';
+    cells[drag.i].classList.add('hidden');
+  }
+  if (drag.moved) {
+    ghost.style.left = e.clientX + 'px'; ghost.style.top = e.clientY + 'px';
+    cells.forEach(c => c.classList.remove('target'));
+    const t = cellAt(e.clientX, e.clientY); if (t >= 0 && t !== drag.i) cells[t].classList.add('target');
+  }
+});
+function cellAt(x, y) { const el = document.elementFromPoint(x, y); const c = el && el.closest && el.closest('.cell'); return c ? +c.dataset.i : -1; }
+addEventListener('pointerup', e => {
+  if (!drag) return;
+  const d = drag; drag = null; ghost.style.display = 'none';
+  cells.forEach(c => c.classList.remove('target', 'hidden'));
+  if (!d.moved) { tap(d.i); return; }
+  const t = cellAt(e.clientX, e.clientY);
+  if (t >= 0) drop(d.i, t); else render();
+});
+addEventListener('pointercancel', () => { drag = null; ghost.style.display = 'none'; cells.forEach(c => c.classList.remove('target', 'hidden')); });
+boardEl.addEventListener('click', e => {
+  const c = e.target.closest('.cell'); if (!c) return;
+  const i = +c.dataset.i; if (S.board[i] < 0) { initAudio(); plant(i); }
+});
+
+// ---------- 订单 / 花园装饰 ----------
+function newOrder() {
+  const maxFound = Math.max(...S.found);
+  const hi = Math.min(MAXLV, Math.max(2, maxFound + 1));
+  const lv = 1 + Math.floor(Math.random() * hi);
+  const need = lv <= 3 ? 2 + Math.floor(Math.random() * 3) : lv <= 6 ? 2 : 1;
+  const used = S.orders.map(o => o.lv);
+  let level = lv, tries = 0;
+  while (used.includes(level) && tries++ < 10) level = 1 + Math.floor(Math.random() * hi);
+  return { lv: level, need, have: 0, reward: 1 + Math.ceil(level * need / 2) };
+}
+function ensureOrders() { while (S.orders.length < 3) S.orders.push(newOrder()); }
+ensureOrders();
+function progress(lv) {
+  S.orders.forEach((o, idx) => {
+    if (o.lv !== lv || o.have >= o.need) return;
+    o.have++;
+    if (o.have >= o.need) {
+      S.stars += o.reward; sfx.done();
+      const before = unlocked();
+      setTimeout(() => {
+        toast(`🎀 订单完成！+${o.reward} ⭐`);
+        S.orders[idx] = newOrder(); render(); save();
+        if (unlocked() > before) setTimeout(() => toast(`🎁 解锁新装饰：${DECORS[unlocked() - 1][1]}`), 1900);
+      }, 450);
+    }
+  });
+}
+function renderOrders() {
+  $('orders').innerHTML = S.orders.map(o =>
+    `<div class="order ${o.have >= o.need ? 'done' : ''}"><div class="em">${ITEMS[o.lv][0]}</div>合成 ${o.have}/${o.need}<div class="bar"><i style="width:${Math.min(100, o.have / o.need * 100)}%"></i></div>奖励 ⭐${o.reward}</div>`).join('');
+}
+const unlocked = () => DECORS.filter(d => S.stars >= d[0]).length;
+function renderDecor() {
+  const n = unlocked();
+  $('decor').textContent = n ? DECORS.slice(0, n).map(d => d[1]).join(' ') : '空空的…';
+  $('next').textContent = n < DECORS.length ? `再赚 ${DECORS[n][0] - S.stars}⭐` : '全部解锁！';
+}
+
+// ---------- 图鉴 ----------
+function openBook() {
+  $('bookInfo').textContent = `已发现 ${S.found.length} / ${ITEMS.length} 种`;
+  $('book').innerHTML = ITEMS.map((it, i) => {
+    const ok = S.found.includes(i);
+    return `<div class="bk ${ok ? '' : 'lock'}"><span class="em">${it[0]}</span><span>${ok ? it[1] : '???'}</span></div>`;
+  }).join('');
+  $('bookCard').classList.add('show');
+}
+$('btnBook').onclick = () => { initAudio(); openBook(); };
+$('btnBookClose').onclick = () => $('bookCard').classList.remove('show');
+
+// ---------- 按钮 ----------
+function syncToggles() {
+  $('btnMusic').classList.toggle('off', !S.music);
+  $('btnSfx').classList.toggle('off', !S.sfx);
+  if (musicGain) musicGain.gain.value = S.music ? 1 : 0;
+  if (sfxGain) sfxGain.gain.value = S.sfx ? 1 : 0;
+}
+$('btnMusic').onclick = () => { S.music = !S.music; if (S.music) startMusic(); syncToggles(); save(); toast(S.music ? '🎵 音乐已开' : '🔇 音乐已关'); };
+$('btnSfx').onclick = () => { initAudio(); S.sfx = !S.sfx; syncToggles(); save(); toast(S.sfx ? '🔔 音效已开' : '🔕 音效已关'); };
+$('btnPlant').onclick = () => { initAudio(); plant(-1); };
+$('btnClean').onclick = () => {
+  let n = 0; S.board = S.board.map(v => (v === 0 ? (n++, -1) : v));
+  if (!n) { toast('没有可以清理的种子～'); return; }
+  selected = -1; render(); save(); toast(`🧹 清理了 ${n} 颗种子`);
+};
+$('btnStart').onclick = () => {
+  $('startCard').classList.remove('show');
+  initAudio(); syncToggles(); if (S.music) startMusic();
+  if (S.board.every(v => v < 0)) { for (let k = 0; k < 6; k++) plant(-1); }
+};
+
+fit(); syncToggles(); render();
+window.__garden = { S, plant, tap, drop, merge, get ac() { return ac; } };
+})();
+</script>
+</body>
+</html>

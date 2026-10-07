@@ -30,7 +30,7 @@ fx.addMono(I.subBoom(3.0), ev.hit, 0.9); perc.addMono(I.crash(3), ev.hit, 0.5); 
 fx.addMono(I.noiseSweep(1.2, 9000, 600, { q: 1, pink: true }), ev.hit, 0.3);
 const tail = [['A4', 0.9], ['C5', 1.8], ['E5', 2.7], ['A5', 3.8]];
 for (const [n, dt] of tail) { const mb = I.musicBox(m(n)); keys.addMono(mb, ev.hit + dt, 0.3); verb.addMono(mb, ev.hit + dt, 0.3); }
-for (const n of ['A3', 'C4', 'E4']) { const { L, R } = I.padNote(n, 5.5, { cutoff: 900, attack: 1.0, release: 2.0 }); pad.addStereo(L, R, ev.hit + 1.0, 0.1); }
+for (const n of ['A3', 'C4', 'E4'].map(m)) { const { L, R } = I.padNote(n, 5.5, { cutoff: 900, attack: 1.0, release: 2.0 }); pad.addStereo(L, R, ev.hit + 1.0, 0.1); }
 
 const stems = { keys, pad, str, bass, perc, fx, verb: reverb(verb, { room: 0.88, damp: 0.35 }) };
 const GAIN = { keys: 1.0, pad: 2.4, str: 2.2, bass: 0.8, perc: 1.0, fx: 1.0, verb: 1 };

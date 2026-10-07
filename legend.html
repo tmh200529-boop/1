@@ -20,7 +20,7 @@
   .sk .cd { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.65); height: 0; }
   .sk .n { position: absolute; right: 3px; bottom: 1px; font-size: 1.7vmin; color: var(--gold); font-weight: 700; }
   .sk:active { transform: scale(.93); }
-  #topbtns { position: absolute; right: 1.2%; top: 18%; display: flex; flex-direction: column; gap: 6px; }
+  #topbtns { position: absolute; right: 1.2%; top: 23%; display: flex; flex-direction: column; gap: 6px; }
   .tb { width: 7.2vmin; height: 7.2vmin; max-width: 46px; max-height: 46px; border-radius: 50%; border: 2px solid var(--line); background: rgba(24,18,12,.88); color: #fff; font-size: 3.4vmin; cursor: pointer; padding: 0; }
   .tb.off { opacity: .45; }
   /* 面板 */
@@ -659,7 +659,7 @@ function beginGame(data) {
   log('欢迎来到传奇世界！点击怪物开始战斗', '#ffe9a8');
 }
 $('bStart').onclick = () => {
-  beginGame({ cls: selCls, name: $('nm').value.trim() || CLASSES[selCls].name, lvl: 1, exp: 0, gold: 50, hpPot: 5, mpPot: 5, bag: [],
+  beginGame({ cls: selCls, name: $('nm').value.trim() || '勇士', lvl: 1, exp: 0, gold: 50, hpPot: 5, mpPot: 5, bag: [],
     equip: { weapon: Object.assign(mkItem('weapon', 1, 0), { name: '木剑', atk: 2 }), armor: Object.assign(mkItem('armor', 1, 0), { name: '布衣', def: 1 }), helmet: null, ring: null } });
   save();
 };
